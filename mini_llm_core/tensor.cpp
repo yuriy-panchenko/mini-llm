@@ -6,11 +6,19 @@ namespace llm
 	Tensor::Tensor(std::initializer_list<size_t> const& dim)
 		:m_Dim{ dim.begin(), dim.end() }
 	{
-		size_t total{1ull};
+		for (auto iter{ m_Dim.begin() }; iter != m_Dim.end();)
+			if (*iter)
+				++iter;
+			else iter = m_Dim.erase(iter);
 
-		for (auto u : dim)
-			total *= u;
+		if (!m_Dim.empty())
+		{
+			size_t total{ 1ull };
 
-		m_Data.resize(total);
+			for (auto u : m_Dim)
+				total *= u;
+
+			m_Data.resize(total, {});
+		}
 	}
 }
