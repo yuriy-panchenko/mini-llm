@@ -8,6 +8,8 @@ namespace llm
 		Tensor m_Ws, m_Bias;
 
 	public:
+		Linear(Tensor const& w, Tensor const& bias);
+
 		Tensor forward(const Tensor& input) const;
 	};
 }

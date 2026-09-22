@@ -34,6 +34,14 @@ namespace llm
 		std::transform(m_Data.begin(), m_Data.end(), oth.m_Data.begin(), m_Data.begin(), [](scalar a, scalar b) {return a + b; });
 	}
 
+	Tensor Tensor::gelu() const
+	{
+		auto ret{ *this };
+		for (auto& val : ret.m_Data)
+			val = GELU(val);
+		return ret;
+	}
+
 	size_t Tensor::to_index(std::initializer_list<size_t> const& adr) const
 	{
 		assert(adr.size() == m_Dim.size());
@@ -49,6 +57,11 @@ namespace llm
 		assert(ret < size());
 
 		return ret;
+	}
+
+	scalar GELU(scalar x)
+	{
+		return  .5f * x * (1.f + tanh(sqrt((2.f / scalar(std::numbers::pi))) * (x + .044715f * x * x * x)));
 	}
 
 	Tensor matmul(const Tensor& left, const Tensor& right)

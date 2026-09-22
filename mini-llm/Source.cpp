@@ -62,4 +62,15 @@ int main()
 
 	assert(sum.at({ 0, 0 }) == 11.0f);
 	assert(sum.at({ 1, 1 }) == 44.0f);
+
+	Tensor bias{ 2 };
+	bias.set({ 10, 20 });
+
+	Linear l1{ B, bias };
+	C = l1.forward(A);
+
+	Tensor input{ 3 };
+	input.set({ -1, 0, 1 });
+	auto output{ input.gelu() };
+	//: approximately[-0.1588, 0, 0.8412]
 }

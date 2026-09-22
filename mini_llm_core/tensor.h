@@ -1,10 +1,13 @@
 #pragma once
 #include <initializer_list>
 #include <vector>
+#include <numbers>
 #include "classmap.h"
 
 namespace llm
 {
+	scalar GELU(scalar x);
+
 	class Tensor
 	{
 		std::vector<size_t> m_Dim;
@@ -31,6 +34,7 @@ namespace llm
 		void set(std::vector<scalar>&& data) { assert(data.size() == size()); m_Data = std::move(data); }
 		Tensor operator+(Tensor const&)const;
 		void operator+=(Tensor const&);
+		llm::Tensor gelu()const;
 
 	private:
 		size_t to_index(std::initializer_list<size_t> const& adr)const;

@@ -3,12 +3,17 @@
 
 namespace llm
 {
+	Linear::Linear(Tensor const& w, Tensor const& bias)
+		:m_Ws{ w }
+		, m_Bias{ bias }
+	{}
+
 	Tensor Linear::forward(const Tensor& input) const
 	{
 		auto ret{ matmul(input, m_Ws) };
 		auto const
-			rows{ m_Ws.shape()[1] },
-			cols{ m_Ws.shape()[0] };
+			rows{ ret.shape()[0] },
+			cols{ ret.shape()[1] };
 		assert(m_Bias.size() == cols);
 
 		for (size_t iRow = 0; iRow < rows; ++iRow)
