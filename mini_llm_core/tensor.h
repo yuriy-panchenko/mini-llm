@@ -29,10 +29,13 @@ namespace llm
 		void fill(scalar val) { std::fill(m_Data.begin(), m_Data.end(), val); }
 		void set(std::vector<scalar>const& data) { assert(data.size() == size()); m_Data = data; }
 		void set(std::vector<scalar>&& data) { assert(data.size() == size()); m_Data = std::move(data); }
+		Tensor operator+(Tensor const&)const;
+		void operator+=(Tensor const&);
 
 	private:
 		size_t to_index(std::initializer_list<size_t> const& adr)const;
 	};
 
 	Tensor matmul(const Tensor& left, const Tensor& right);
+	Tensor add(const Tensor& left, const Tensor& right);
 }

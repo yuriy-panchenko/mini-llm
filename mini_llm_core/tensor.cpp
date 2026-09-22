@@ -21,6 +21,18 @@ namespace llm
 		}
 	}
 
+	Tensor Tensor::operator+(Tensor const& oth)const
+	{
+		auto ret{ *this };
+		ret += oth;
+		return ret;
+	}
+
+	void Tensor::operator+=(Tensor const& oth)
+	{
+		std::transform(m_Data.begin(), m_Data.end(), oth.m_Data.begin(), m_Data.begin(), [](scalar a, scalar b) {return a + b; });
+	}
+
 	size_t Tensor::to_index(std::initializer_list<size_t> const& adr) const
 	{
 		assert(adr.size() == m_Dim.size());
@@ -57,5 +69,12 @@ namespace llm
 					ret.at({ iRow,iCol }) += left.at({ iRow, iShare }) * right.at({ iShare, iCol });
 
 		return ret;
+	}
+
+	Tensor add(const Tensor& left, const Tensor& right)
+	{
+		assert(left.shape() == right.shape());
+
+		return left + right;
 	}
 }

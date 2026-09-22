@@ -42,4 +42,13 @@ int main()
 	//std::cout << C;
 		//58   64
 		//139  154
+
+	assert(C.ndim() == 2);
+	assert(C.shape()[0] == 2);
+	assert(C.shape()[1] == 2);
+
+	assert(C.at({ 0, 0 }) == 58.0f);
+	assert(C.at({ 0, 1 }) == 64.0f);
+	assert(C.at({ 1, 0 }) == 139.0f);
+	assert(C.at({ 1, 1 }) == 154.0f);
 }
