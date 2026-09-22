@@ -35,6 +35,7 @@ namespace llm
 		Tensor operator+(Tensor const&)const;
 		void operator+=(Tensor const&);
 		llm::Tensor gelu()const;
+		llm::Tensor norm()const;
 
 	private:
 		size_t to_index(std::initializer_list<size_t> const& adr)const;

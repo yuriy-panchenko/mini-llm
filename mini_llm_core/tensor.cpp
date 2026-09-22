@@ -42,6 +42,21 @@ namespace llm
 		return ret;
 	}
 
+	Tensor Tensor::norm() const
+	{
+		auto iter{ m_Data.begin() };
+		scalar up{ *iter }, down{ *iter };
+		for (iter++; iter != m_Data.end(); ++iter)
+			up = std::max(up, *iter),
+			down = std::min(down, *iter);
+
+		auto val{ std::max(std::abs(up),std::abs(down)) };
+		auto ret{ *this };
+		for (auto& v : ret.m_Data)
+			v /= val;
+		return ret;
+	}
+
 	size_t Tensor::to_index(std::initializer_list<size_t> const& adr) const
 	{
 		assert(adr.size() == m_Dim.size());

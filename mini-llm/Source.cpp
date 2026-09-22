@@ -73,4 +73,15 @@ int main()
 	input.set({ -1, 0, 1 });
 	auto output{ input.gelu() };
 	//: approximately[-0.1588, 0, 0.8412]
+
+	// Linear output expected:
+	assert(C.at({ 0, 0 }) == 68.0f);
+	assert(C.at({ 0, 1 }) == 84.0f);
+	assert(C.at({ 1, 0 }) == 149.0f);
+	assert(C.at({ 1, 1 }) == 174.0f);
+
+	// GELU needs a tolerance:
+	assert(std::abs(output[0] - -0.1588f) < 0.0001f);
+	assert(std::abs(output[1] - 0.0000f) < 0.0001f);
+	assert(std::abs(output[2] - 0.8412f) < 0.0001f);
 }
