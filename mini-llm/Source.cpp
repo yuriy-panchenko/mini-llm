@@ -1,2 +1,8 @@
+#include "..\mini_llm_core\core.h"
 
-int main() {}
+using namespace llm;
+
+int main()
+{
+	Tensor u;
+}

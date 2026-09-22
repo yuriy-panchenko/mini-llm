@@ -1,6 +1,7 @@
 #pragma once
+#include "classmap.h"
 
 namespace llm
 {
-	template<typename T>class Tensor;
+	class Tensor {};
 }

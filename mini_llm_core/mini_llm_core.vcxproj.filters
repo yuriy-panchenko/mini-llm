@@ -24,6 +24,12 @@
     <ClInclude Include="tensor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="classmap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="core.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="mini_llm_core.cpp">
