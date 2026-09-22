@@ -1,3 +1,5 @@
+#include <cassert>
+#include <iostream>
 #include "..\mini_llm_core\core.h"
 
 using namespace llm;
@@ -19,6 +21,25 @@ int main()
 	//Tensor{ 2, 3 }.at({ 2, 0 });//  invalid: row 2 does not exist
 	//Tensor{ 2, 3 }.at({ 1 });//     invalid: wrong number of indices
 	//Tensor{ 2, 3 }.at({ 1, 2, 0 });// invalid: wrong number of indices
-	x.at({ 1, 2 }) = 42.0f;
-	x[5] = 42.0f;
+	//x.at({ 1, 2 }) = 42.0f;
+	//x[5] = 42.0f;
+
+	//x.at({ 1, 2 }) = 42.0f;
+	//assert(x[5] == 42.0f);
+
+	//x[0] = 7.0f;
+	//assert(x.at({ 0, 0 }) == 7.0f);
+
+	Tensor A{ 2, 3 };
+
+	A.set({ 1,2,3,4,5,6 });
+
+	Tensor B{ 3, 2 };
+	B.set({ 7,8,9,10,11,12 });
+
+	auto C{ matmul(A, B) };	// shape[2, 2]
+
+	//std::cout << C;
+		//58   64
+		//139  154
 }

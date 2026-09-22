@@ -37,4 +37,25 @@ namespace llm
 
 		return ret;
 	}
+
+	Tensor matmul(const Tensor& left, const Tensor& right)
+	{
+		assert(left.ndim() == 2);
+		assert(left.ndim() == right.ndim());
+		assert(left.shape()[1] == right.shape()[0]);
+
+		auto const
+			rows{ left.shape()[0] },
+			cols{ right.shape()[1] },
+			shared{ right.shape()[0] };
+
+		Tensor ret{ rows, cols };
+
+		for (size_t iRow = 0; iRow < rows; ++iRow)
+			for (size_t iCol = 0; iCol < cols; ++iCol)
+				for (size_t iShare = 0; iShare < shared; ++iShare)
+					ret.at({ iRow,iCol }) += left.at({ iRow, iShare }) * right.at({ iShare, iCol });
+
+		return ret;
+	}
 }
