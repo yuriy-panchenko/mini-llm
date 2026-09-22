@@ -6,4 +6,12 @@ int main()
 {
 	Tensor u{}, u2{ 4, 0, 3 };
 	//Tensor u{ 2, 3 }, u2{ 4, 2, 3 };
+
+	Tensor x{ 2, 3 };
+
+	auto r1 = x.ndim();//   → 2
+	auto r2 = x.size();//   → 6
+	auto r3 = x.shape();//  →[2, 3]
+	auto r4 = x.at({ 0, 0 });// → 0
+	auto r5 = x.at({ 1, 2 });// → 0
 }

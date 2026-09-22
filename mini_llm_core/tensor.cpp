@@ -21,4 +21,17 @@ namespace llm
 			m_Data.resize(total, {});
 		}
 	}
+	
+	size_t Tensor::to_index(std::initializer_list<size_t> const& adr) const
+	{
+		size_t ret{};
+
+		for (size_t i = 0; i < adr.size(); ++i)
+		{
+			ret *= m_Dim[i];
+			ret += *(adr.begin() + i);
+		}
+
+		return ret;
+	}
 }
