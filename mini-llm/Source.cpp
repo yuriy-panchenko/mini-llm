@@ -4,5 +4,5 @@ using namespace llm;
 
 int main()
 {
-	Tensor u{ 2, 3 };
+	Tensor u{ 2, 3 }, u2{ 4, 2, 3 };
 }
