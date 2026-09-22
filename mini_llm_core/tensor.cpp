@@ -6,10 +6,9 @@ namespace llm
 	Tensor::Tensor(std::initializer_list<size_t> const& dim)
 		:m_Dim{ dim.begin(), dim.end() }
 	{
-		for (auto iter{ m_Dim.begin() }; iter != m_Dim.end();)
-			if (*iter)
-				++iter;
-			else iter = m_Dim.erase(iter);
+		for (auto iter{ m_Dim.begin() }; iter != m_Dim.end(); ++iter)
+			if (!*iter)
+				assert(false);
 
 		if (!m_Dim.empty())
 		{
@@ -21,16 +20,20 @@ namespace llm
 			m_Data.resize(total, {});
 		}
 	}
-	
+
 	size_t Tensor::to_index(std::initializer_list<size_t> const& adr) const
 	{
+		assert(adr.size() == m_Dim.size());
 		size_t ret{};
 
 		for (size_t i = 0; i < adr.size(); ++i)
 		{
 			ret *= m_Dim[i];
+			assert(*(adr.begin() + i) < m_Dim[i]);
 			ret += *(adr.begin() + i);
 		}
+
+		assert(ret < size());
 
 		return ret;
 	}

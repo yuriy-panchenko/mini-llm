@@ -22,8 +22,11 @@ namespace llm
 		//scalar at(...)const;		// → 0
 		//template<scalar...>
 		//scalar& at(...);		// → 0
-		scalar at(std::initializer_list<size_t> adr)const { return m_Data[to_index(adr)]; }	// → 0
-		scalar& at(std::initializer_list<size_t> adr) { return m_Data[to_index(adr)]; }		// → 0
+		scalar at(std::initializer_list<size_t> adr)const { return (*this)[to_index(adr)]; }	// → 0
+		scalar& at(std::initializer_list<size_t> adr) { return (*this)[to_index(adr)]; }		// → 0
+		scalar operator[](size_t index)const { return m_Data[index]; }
+		scalar& operator[](size_t index) { return m_Data[index]; }
+		void fill(scalar val) { std::fill(m_Data.begin(), m_Data.end(), val); }
 
 	private:
 		size_t to_index(std::initializer_list<size_t> const& adr)const;
