@@ -7,8 +7,8 @@ namespace llm
 	{
 		auto ret{ matmul(input, m_Ws) };
 		auto const
-			rows{ m_Ws.shape()[0] },
-			cols{ m_Ws.shape()[1] };
+			rows{ m_Ws.shape()[1] },
+			cols{ m_Ws.shape()[0] };
 		assert(m_Bias.size() == cols);
 
 		for (size_t iRow = 0; iRow < rows; ++iRow)
