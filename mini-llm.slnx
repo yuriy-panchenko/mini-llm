@@ -3,5 +3,8 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="mini-llm/mini-llm.vcxproj" />
+  <Project Path="mini-llm/mini-llm.vcxproj">
+    <BuildDependency Project="mini_llm_core/mini_llm_core.vcxproj" />
+  </Project>
+  <Project Path="mini_llm_core/mini_llm_core.vcxproj" />
 </Solution>
