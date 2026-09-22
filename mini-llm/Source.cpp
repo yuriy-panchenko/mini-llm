@@ -51,4 +51,15 @@ int main()
 	assert(C.at({ 0, 1 }) == 64.0f);
 	assert(C.at({ 1, 0 }) == 139.0f);
 	assert(C.at({ 1, 1 }) == 154.0f);
+
+	Tensor left{ 2, 2 };
+	left.set({ 1, 2, 3, 4 });
+
+	Tensor right{ 2, 2 };
+	right.set({ 10, 20, 30, 40 });
+
+	auto sum = add(left, right);
+
+	assert(sum.at({ 0, 0 }) == 11.0f);
+	assert(sum.at({ 1, 1 }) == 44.0f);
 }

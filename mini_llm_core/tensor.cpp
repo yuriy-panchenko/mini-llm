@@ -30,6 +30,7 @@ namespace llm
 
 	void Tensor::operator+=(Tensor const& oth)
 	{
+		assert(size() == oth.size());
 		std::transform(m_Data.begin(), m_Data.end(), oth.m_Data.begin(), m_Data.begin(), [](scalar a, scalar b) {return a + b; });
 	}
 
