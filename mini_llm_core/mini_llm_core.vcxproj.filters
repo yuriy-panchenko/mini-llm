@@ -33,6 +33,9 @@
     <ClInclude Include="linear.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="rmsnorm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="mini_llm_core.cpp">
@@ -45,6 +48,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="linear.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="rmsnorm.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
