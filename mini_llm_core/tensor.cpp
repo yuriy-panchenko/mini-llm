@@ -45,15 +45,13 @@ namespace llm
 	Tensor Tensor::norm() const
 	{
 		auto iter{ m_Data.begin() };
-		scalar up{ *iter }, down{ *iter };
+		scalar big{ *iter };
 		for (iter++; iter != m_Data.end(); ++iter)
-			up = std::max(up, *iter),
-			down = std::min(down, *iter);
+			big = std::max(big, std::abs(*iter));
 
-		auto val{ std::max(std::abs(up),std::abs(down)) };
 		auto ret{ *this };
 		for (auto& v : ret.m_Data)
-			v /= val;
+			v /= big;
 		return ret;
 	}
 
