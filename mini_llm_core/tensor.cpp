@@ -58,11 +58,6 @@ namespace llm
 		return ret;
 	}
 
-	Tensor Tensor::matmul(const Tensor& left, const Tensor& right)
-	{
-		return left.matmul(right);
-	}
-
 	Tensor Tensor::matmul(const Tensor& oth) const
 	{
 		assert(ndim() == 2);
@@ -80,6 +75,35 @@ namespace llm
 			for (size_t iCol = 0; iCol < cols; ++iCol)
 				for (size_t iShare = 0; iShare < shared; ++iShare)
 					ret.at({ iRow,iCol }) += at({ iRow, iShare }) * oth.at({ iShare, iCol });
+
+		return ret;
+	}
+
+	Tensor Tensor::softmax() const
+	{
+		assert(ndim() == 2ull);
+
+		auto const rows{ shape()[0] }, cols{ shape()[1] };
+		Tensor ret{ rows, cols };
+
+		for (size_t r = 0; r < rows; ++r)
+		{
+			scalar rowMax{ at({ r, 0 }) };
+
+			for (size_t c = 1; c < cols; ++c)
+				rowMax = std::max(rowMax, at({ r, c }));
+
+			scalar sum{};
+			for (size_t c = 0; c < cols; ++c)
+			{
+				scalar const e{ std::exp(at({ r, c }) - rowMax) };
+				ret.at({ r, c }) = e;
+				sum += e;
+			}
+
+			for (size_t c = 0; c < cols; ++c)
+				ret.at({ r, c }) /= sum;
+		}
 
 		return ret;
 	}

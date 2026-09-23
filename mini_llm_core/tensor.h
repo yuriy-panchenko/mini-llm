@@ -33,13 +33,13 @@ namespace llm
 		void set(std::vector<scalar>&& data) { assert(data.size() == size()); m_Data = std::move(data); }
 		Tensor operator+(Tensor const&)const;
 		void operator+=(Tensor const&);
-		llm::Tensor gelu()const;
-		llm::Tensor norm()const;
-		static Tensor matmul(const Tensor& left, const Tensor& right);
-		static scalar GELU(scalar x);
+		Tensor gelu()const;
+		Tensor norm()const;
 		Tensor matmul(const Tensor&)const;
+		Tensor softmax()const;
 
 	private:
+		static scalar GELU(scalar x);
 		size_t to_index(std::initializer_list<size_t> const& adr)const;
 	};
 

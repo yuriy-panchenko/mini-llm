@@ -7,27 +7,27 @@ namespace llm
 		:m_Gamma{ gamma }
 		, m_Eps{ eps }
 	{}
-	
+
 	Tensor RMSNorm::forward(Tensor const& input) const
 	{
-        auto const rows{ m_Gamma.shape()[0] }, cols{ m_Gamma.shape()[1] };
-        Tensor ret{ rows, cols };
+		auto const rows{ input.shape()[0] }, cols{ input.shape()[1] };
+		Tensor ret{ rows, cols };
 
-        for (size_t r = 0; r < rows; ++r)
-        {
-            scalar sumSq{};
-            for (size_t c = 0; c < cols; ++c)
-            {
-                auto const x{ m_Gamma.at({r, c}) };
-                sumSq += x * x;
-            }
+		for (size_t r = 0; r < rows; ++r)
+		{
+			scalar sumSq{};
+			for (size_t c = 0; c < cols; ++c)
+			{
+				auto const x{ input.at({ r, c }) };
+				sumSq += x * x;
+			}
 
-            scalar const scale{ 1.f / std::sqrt(sumSq / cols + m_Eps) };
+			scalar const scale{ 1.f / std::sqrt(sumSq / cols + m_Eps) };
 
-            for (size_t c = 0; c < cols; ++c)
-                ret.at({ r, c }) = m_Gamma.at({ r, c }) * scale * gamma[c];
-        }
+			for (size_t c = 0; c < cols; ++c)
+				ret.at({ r, c }) = input.at({ r, c }) * scale * m_Gamma[c];
+		}
 
-        return ret;
+		return ret;
 	}
 }

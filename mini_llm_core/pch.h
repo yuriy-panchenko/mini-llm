@@ -11,5 +11,6 @@
 #include "framework.h"
 #include<cassert>
 #include<algorithm>
+#include <cmath>
 
 #endif //PCH_H
