@@ -45,13 +45,42 @@ namespace llm
 	Tensor Tensor::norm() const
 	{
 		auto iter{ m_Data.begin() };
-		scalar big{ *iter };
+		scalar big{ std::abs(*iter) };
+
 		for (iter++; iter != m_Data.end(); ++iter)
 			big = std::max(big, std::abs(*iter));
 
 		auto ret{ *this };
+
 		for (auto& v : ret.m_Data)
 			v /= big;
+
+		return ret;
+	}
+
+	Tensor Tensor::matmul(const Tensor& left, const Tensor& right)
+	{
+		return left.matmul(right);
+	}
+
+	Tensor Tensor::matmul(const Tensor& oth) const
+	{
+		assert(ndim() == 2);
+		assert(ndim() == oth.ndim());
+		assert(shape()[1] == oth.shape()[0]);
+
+		auto const
+			rows{ shape()[0] },
+			cols{ oth.shape()[1] },
+			shared{ oth.shape()[0] };
+
+		Tensor ret{ rows, cols };
+
+		for (size_t iRow = 0; iRow < rows; ++iRow)
+			for (size_t iCol = 0; iCol < cols; ++iCol)
+				for (size_t iShare = 0; iShare < shared; ++iShare)
+					ret.at({ iRow,iCol }) += at({ iRow, iShare }) * oth.at({ iShare, iCol });
+
 		return ret;
 	}
 
@@ -72,36 +101,9 @@ namespace llm
 		return ret;
 	}
 
-	scalar GELU(scalar x)
+	scalar Tensor::GELU(scalar x)
 	{
-		return  .5f * x * (1.f + tanh(sqrt((2.f / scalar(std::numbers::pi))) * (x + .044715f * x * x * x)));
-	}
-
-	Tensor matmul(const Tensor& left, const Tensor& right)
-	{
-		assert(left.ndim() == 2);
-		assert(left.ndim() == right.ndim());
-		assert(left.shape()[1] == right.shape()[0]);
-
-		auto const
-			rows{ left.shape()[0] },
-			cols{ right.shape()[1] },
-			shared{ right.shape()[0] };
-
-		Tensor ret{ rows, cols };
-
-		for (size_t iRow = 0; iRow < rows; ++iRow)
-			for (size_t iCol = 0; iCol < cols; ++iCol)
-				for (size_t iShare = 0; iShare < shared; ++iShare)
-					ret.at({ iRow,iCol }) += left.at({ iRow, iShare }) * right.at({ iShare, iCol });
-
-		return ret;
-	}
-
-	Tensor add(const Tensor& left, const Tensor& right)
-	{
-		assert(left.shape() == right.shape());
-
-		return left + right;
+		auto const static f{ static_cast<scalar>(sqrt(2. / std::numbers::pi)) };
+		return  .5f * x * (1.f + static_cast<scalar>(tanh(f * (x + .044715 * x * x * x))));
 	}
 }

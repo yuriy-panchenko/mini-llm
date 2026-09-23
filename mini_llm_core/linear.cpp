@@ -10,7 +10,7 @@ namespace llm
 
 	Tensor Linear::forward(const Tensor& input) const
 	{
-		auto ret{ matmul(input, m_Ws) };
+		auto ret{  input.matmul(m_Ws) };
 		auto const
 			rows{ ret.shape()[0] },
 			cols{ ret.shape()[1] };

@@ -37,7 +37,7 @@ int main()
 	Tensor B{ 3, 2 };
 	B.set({ 7,8,9,10,11,12 });
 
-	auto C{ matmul(A, B) };	// shape[2, 2]
+	auto C{ A.matmul(B) };	// shape[2, 2]
 
 	//std::cout << C;
 		//58   64
@@ -58,7 +58,7 @@ int main()
 	Tensor right{ 2, 2 };
 	right.set({ 10, 20, 30, 40 });
 
-	auto sum = add(left, right);
+	auto sum = left + right;
 
 	assert(sum.at({ 0, 0 }) == 11.0f);
 	assert(sum.at({ 1, 1 }) == 44.0f);
