@@ -154,6 +154,7 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="attention.h" />
     <ClInclude Include="classmap.h" />
     <ClInclude Include="core.h" />
     <ClInclude Include="framework.h" />
@@ -163,6 +164,7 @@
     <ClInclude Include="tensor.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="attention.cpp" />
     <ClCompile Include="linear.cpp" />
     <ClCompile Include="mini_llm_core.cpp" />
     <ClCompile Include="pch.cpp">

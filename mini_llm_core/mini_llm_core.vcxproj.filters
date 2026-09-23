@@ -36,6 +36,9 @@
     <ClInclude Include="rmsnorm.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="attention.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="mini_llm_core.cpp">
@@ -51,6 +54,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="rmsnorm.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="attention.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

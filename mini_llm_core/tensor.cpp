@@ -34,6 +34,32 @@ namespace llm
 		std::transform(m_Data.begin(), m_Data.end(), oth.m_Data.begin(), m_Data.begin(), [](scalar a, scalar b) {return a + b; });
 	}
 
+	Tensor Tensor::operator*(scalar s) const
+	{
+		auto ret{ *this };
+		ret *= s;
+		return ret;
+	}
+
+	void Tensor::operator*=(scalar s)
+	{
+		for (auto& val : m_Data)
+			val *= s;
+	}
+
+	Tensor Tensor::operator/(scalar s) const
+	{
+		auto ret{ *this };
+		ret /= s;
+		return ret;
+	}
+
+	void Tensor::operator/=(scalar s)
+	{
+		for (auto& val : m_Data)
+			val /= s;
+	}
+
 	Tensor Tensor::gelu() const
 	{
 		auto ret{ *this };
@@ -104,6 +130,20 @@ namespace llm
 			for (size_t c = 0; c < cols; ++c)
 				ret.at({ r, c }) /= sum;
 		}
+
+		return ret;
+	}
+
+	Tensor Tensor::transpose() const
+	{
+		assert(ndim() == 2ull);
+
+		auto const rows{ shape()[0] }, cols{ shape()[1] };
+		Tensor ret{ cols, rows };   // dimensions swapped
+
+		for (size_t r = 0; r < rows; ++r)
+			for (size_t c = 0; c < cols; ++c)
+				ret.at({ c, r }) = at({ r, c });
 
 		return ret;
 	}
