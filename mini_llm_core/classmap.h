@@ -19,7 +19,7 @@ namespace llm
 	class RMSNorm;
 	class Matrix;
 	class Vector;
-	class TransformerBlock;
+	template<typename AttnT>class TransformerBlock;
 	//class Tokenizer;
 	//class Transformer;
 }

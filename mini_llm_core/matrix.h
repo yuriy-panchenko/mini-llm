@@ -6,8 +6,19 @@ namespace llm
 {
 	class Matrix
 	{
-		std::vector<scalar> m_Data;
-		size_t m_CY, m_CX;
+	public:
+		template<typename T>
+		class Row
+		{
+			T* b, * e;
+		public:
+			Row(T* p, size_t cx) :b{ p }, e{ p + cx } {}
+			T* begin() { return b; }
+			T* begin()const { return b; }
+			T* end() { return e; }
+			T* end()const { return e; }
+		};
+
 	public:
 		Matrix(size_t rows, size_t columns);
 
@@ -31,11 +42,13 @@ namespace llm
 		Matrix slice_cols(size_t colStart, size_t count) const;
 		static Matrix concat_cols(std::vector<Matrix> const& parts);
 		Matrix gelu()const;
+		Row<scalar const> row(size_t index)const { return { m_Data.data(), m_CX }; }
+		Row<scalar> row(size_t index) { return { m_Data.data(), m_CX }; }
 
 	private:
-		//scalar operator[](size_t index)const { return m_Data[index]; }
-		//scalar& operator[](size_t index) { return m_Data[index]; }
-
 		size_t to_index(size_t y, size_t x)const { return y * m_CX + x; }
+
+		std::vector<scalar> m_Data;
+		size_t m_CY, m_CX;
 	};
 }

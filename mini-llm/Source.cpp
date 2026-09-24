@@ -213,4 +213,66 @@ int main()
 		assert(std::abs(result.at(1, 2) - -0.07225687f) < 0.0001f);
 		assert(std::abs(result.at(1, 3) - 0.17943997f) < 0.0001f);
 	}
+	{
+		Matrix X{ 2, 3 };
+		X.set({ 0.50000000f, -0.20000000f, 1.00000000f, -1.00000000f, 0.30000001f, 0.20000000f });
+
+		Matrix Wq{ 3, 2 };
+		Wq.set({ 0.10000000f, -0.20000000f, 0.30000001f, 0.10000000f, -0.10000000f, 0.20000000f });
+		Vector bq{ 2 };
+		bq.set({ 0.05000000f, -0.05000000f });
+
+		Matrix Wk{ 3, 2 };
+		Wk.set({ 0.20000000f, 0.10000000f, -0.10000000f, 0.30000001f, 0.15000001f, -0.20000000f });
+		Vector bk{ 2 };
+		bk.set({ 0.00000000f, 0.10000000f });
+
+		Matrix Wv{ 3, 2 };
+		Wv.set({ 0.10000000f, 0.25000000f, 0.20000000f, -0.10000000f, -0.15000001f, 0.05000000f });
+		Vector bv{ 2 };
+		bv.set({ 0.05000000f, 0.00000000f });
+
+		Matrix Wo{ 2, 3 };
+		Wo.set({ 0.20000000f, -0.10000000f, 0.15000001f, 0.10000000f, 0.30000001f, -0.05000000f });
+		Vector bo{ 3 };
+		bo.set({ 0.00000000f, 0.05000000f, -0.05000000f });
+
+		Vector gamma1{ 3 };
+		gamma1.set({ 1.00000000f, 1.00000000f, 1.00000000f });
+
+		Matrix Wf1{ 3, 4 };
+		Wf1.set({ 0.10000000f, -0.20000000f, 0.15000001f, 0.05000000f,
+				  0.20000000f, 0.10000000f, -0.10000000f, 0.30000001f,
+				  -0.15000001f, 0.25000000f, 0.20000000f, -0.05000000f });
+		Vector bf1{ 4 };
+		bf1.set({ 0.05000000f, -0.05000000f, 0.10000000f, 0.00000000f });
+
+		Matrix Wf2{ 4, 3 };
+		Wf2.set({ 0.20000000f, -0.10000000f, 0.15000001f,
+				  0.10000000f, 0.30000001f, -0.05000000f,
+				  -0.20000000f, 0.05000000f, 0.25000000f,
+				  0.15000001f, -0.15000001f, 0.10000000f });
+		Vector bf2{ 3 };
+		bf2.set({ 0.00000000f, 0.05000000f, -0.05000000f });
+
+		Vector gamma2{ 3 };
+		gamma2.set({ 1.00000000f, 1.00000000f, 1.00000000f });
+
+		TransformerBlock<Attention> block{
+			Attention{ Linear{ Wq, bq }, Linear{ Wk, bk }, Linear{ Wv, bv }, Linear{ Wo, bo } },
+			RMSNorm{ gamma1 },
+			Linear{ Wf1, bf1 },
+			Linear{ Wf2, bf2 },
+			RMSNorm{ gamma2 }
+		};
+
+		auto result{ block.forward(X) };
+
+		assert(std::abs(result.at(0, 0) - 0.37835372f) < 0.0001f);
+		assert(std::abs(result.at(0, 1) - -0.05428675f) < 0.0001f);
+		assert(std::abs(result.at(0, 2) - 0.96446670f) < 0.0001f);
+		assert(std::abs(result.at(1, 0) - -0.99071364f) < 0.0001f);
+		assert(std::abs(result.at(1, 1) - 0.45434434f) < 0.0001f);
+		assert(std::abs(result.at(1, 2) - 0.05856703f) < 0.0001f);
+	}
 }

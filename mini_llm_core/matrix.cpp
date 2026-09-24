@@ -122,4 +122,10 @@ namespace llm
 
 		return ret;
 	}
+	Matrix Matrix::gelu() const
+	{
+		auto ret{ *this };
+		std::transform(ret.m_Data.begin(), ret.m_Data.end(), ret.m_Data.begin(), GELU);
+		return ret;
+	}
 }
