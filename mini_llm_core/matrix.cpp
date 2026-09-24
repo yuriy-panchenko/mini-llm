@@ -55,7 +55,7 @@ namespace llm
 
 	Matrix Matrix::transpose() const
 	{
-		Matrix ret{ m_CY, m_CX };   // dimensions swapped
+		Matrix ret{ m_CX, m_CY };   // dimensions swapped
 
 		for (size_t r = 0; r < rows(); ++r)
 			for (size_t c = 0; c < cols(); ++c)
