@@ -301,4 +301,146 @@ int main()
 		assert(result.at(2, 1) == -2.0f);
 		assert(result.at(2, 2) == -3.0f);
 	}
+	{
+		// Matrix::matmul, isolated
+		Matrix A{ 2, 3 };
+		A.set({ 1, 2, 3, 4, 5, 6 });
+
+		Matrix B{ 3, 2 };
+		B.set({ 7, 8, 9, 10, 11, 12 });
+
+		auto C{ A.matmul(B) };
+
+		assert(C.rows() == 2);
+		assert(C.cols() == 2);
+		assert(std::abs(C.at(0, 0) - 58.0f) < 0.0001f);
+		assert(std::abs(C.at(0, 1) - 64.0f) < 0.0001f);
+		assert(std::abs(C.at(1, 0) - 139.0f) < 0.0001f);
+		assert(std::abs(C.at(1, 1) - 154.0f) < 0.0001f);
+	}
+	{
+		// Matrix::gelu, isolated
+		Matrix X{ 1, 7 };
+		X.set({ -2.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.0f });
+
+		auto Y{ X.gelu() };
+
+		assert(std::abs(Y.at(0, 0) - -0.0454023f) < 0.0001f);
+		assert(std::abs(Y.at(0, 1) - -0.1588080f) < 0.0001f);
+		assert(std::abs(Y.at(0, 2) - -0.1542860f) < 0.0001f);
+		assert(std::abs(Y.at(0, 3) - 0.0000000f) < 0.0001f);
+		assert(std::abs(Y.at(0, 4) - 0.3457140f) < 0.0001f);
+		assert(std::abs(Y.at(0, 5) - 0.8411920f) < 0.0001f);
+		assert(std::abs(Y.at(0, 6) - 1.9545977f) < 0.0001f);
+	}
+	{
+		// Matrix::softmax, isolated
+		Matrix S{ 2, 3 };
+		S.set({ 1.0f, 2.0f, 3.0f,
+				1.0f, 1.0f, 1.0f });
+
+		auto P{ S.softmax() };
+
+		assert(std::abs(P.at(0, 0) - 0.0900306f) < 0.0001f);
+		assert(std::abs(P.at(0, 1) - 0.2447285f) < 0.0001f);
+		assert(std::abs(P.at(0, 2) - 0.6652409f) < 0.0001f);
+		assert(std::abs(P.at(1, 0) - (1.0f / 3.0f)) < 0.0001f);
+		assert(std::abs(P.at(1, 1) - (1.0f / 3.0f)) < 0.0001f);
+		assert(std::abs(P.at(1, 2) - (1.0f / 3.0f)) < 0.0001f);
+	}
+	{
+		// Matrix::slice_cols / Matrix::concat_cols, isolated
+		Matrix M{ 2, 4 };
+		M.set({ 1, 2, 3, 4,
+				5, 6, 7, 8 });
+
+		auto left{ M.slice_cols(0, 2) };
+		auto right{ M.slice_cols(2, 2) };
+
+		assert(left.rows() == 2 && left.cols() == 2);
+		assert(std::abs(left.at(0, 0) - 1.0f) < 0.0001f);
+		assert(std::abs(left.at(0, 1) - 2.0f) < 0.0001f);
+		assert(std::abs(left.at(1, 0) - 5.0f) < 0.0001f);
+		assert(std::abs(left.at(1, 1) - 6.0f) < 0.0001f);
+
+		assert(right.rows() == 2 && right.cols() == 2);
+		assert(std::abs(right.at(0, 0) - 3.0f) < 0.0001f);
+		assert(std::abs(right.at(0, 1) - 4.0f) < 0.0001f);
+		assert(std::abs(right.at(1, 0) - 7.0f) < 0.0001f);
+		assert(std::abs(right.at(1, 1) - 8.0f) < 0.0001f);
+
+		auto rejoined{ Matrix::concat_cols({ left, right }) };
+
+		assert(rejoined.rows() == M.rows());
+		assert(rejoined.cols() == M.cols());
+		for (size_t r = 0; r < M.rows(); ++r)
+			for (size_t c = 0; c < M.cols(); ++c)
+				assert(std::abs(rejoined.at(r, c) - M.at(r, c)) < 0.0001f);
+	}
+	{
+		// Attention with causal masking — same weights as the non-identity Attention test above,
+		// but row 0 is now restricted to attending only to itself.
+		Matrix X{ 2, 3 };
+		X.set({ 1.0f, 2.0f, 0.5f,
+				0.5f, -1.0f, 2.0f });
+
+		Matrix Wq{ 3, 2 };
+		Wq.set({ 0.1f, 0.2f, 0.3f, -0.1f, -0.2f, 0.4f });
+		Vector bq{ 2 };
+		bq.set({ 0.05f, -0.05f });
+
+		Matrix Wk{ 3, 2 };
+		Wk.set({ 0.4f, -0.3f, 0.1f, 0.2f, 0.3f, 0.1f });
+		Vector bk{ 2 };
+		bk.set({ 0.0f, 0.1f });
+
+		Matrix Wv{ 3, 2 };
+		Wv.set({ 0.2f, 0.1f, -0.1f, 0.3f, 0.5f, -0.2f });
+		Vector bv{ 2 };
+		bv.set({ 0.1f, 0.0f });
+
+		Matrix Wo{ 2, 3 };
+		Wo.set({ 0.3f, -0.2f, 0.1f, 0.1f, 0.4f, -0.3f });
+		Vector bo{ 3 };
+		bo.set({ 0.0f, 0.05f, -0.05f });
+
+		Attention causalAttn{ Linear{ Wq, bq }, Linear{ Wk, bk }, Linear{ Wv, bv }, Linear{ Wo, bo }, /*causal=*/true };
+
+		auto result{ causalAttn.forward(X) };
+
+		// Row 0 can only attend to itself (attn weights [1, 0]) — its output no longer
+		// blends in row 1's Value at all, which is why this differs from the unmasked test.
+		assert(std::abs(result.at(0, 0) - 0.16500001f) < 0.0001f);
+		assert(std::abs(result.at(0, 1) - 0.22000001f) < 0.0001f);
+		assert(std::abs(result.at(0, 2) - -0.19500001f) < 0.0001f);
+
+		// Row 1 can see everything up to and including itself, i.e. the whole sequence here —
+		// so it's identical to the unmasked result.
+		assert(std::abs(result.at(1, 0) - 0.23780701f) < 0.0001f);
+		assert(std::abs(result.at(1, 1) - -0.09398013f) < 0.0001f);
+		assert(std::abs(result.at(1, 2) - 0.01887052f) < 0.0001f);
+	}
+	{
+		// sinusoidal_positional_encoding, isolated
+		auto pe{ sinusoidal_positional_encoding(3, 4) };
+
+		assert(pe.rows() == 3);
+		assert(pe.cols() == 4);
+
+		// pos 0: sin(0)=0, cos(0)=1 in every pair
+		assert(std::abs(pe.at(0, 0) - 0.0f) < 0.0001f);
+		assert(std::abs(pe.at(0, 1) - 1.0f) < 0.0001f);
+		assert(std::abs(pe.at(0, 2) - 0.0f) < 0.0001f);
+		assert(std::abs(pe.at(0, 3) - 1.0f) < 0.0001f);
+
+		assert(std::abs(pe.at(1, 0) - 0.8414710f) < 0.0001f);
+		assert(std::abs(pe.at(1, 1) - 0.5403023f) < 0.0001f);
+		assert(std::abs(pe.at(1, 2) - 0.0099998f) < 0.0001f);
+		assert(std::abs(pe.at(1, 3) - 0.9999500f) < 0.0001f);
+
+		assert(std::abs(pe.at(2, 0) - 0.9092974f) < 0.0001f);
+		assert(std::abs(pe.at(2, 1) - -0.4161468f) < 0.0001f);
+		assert(std::abs(pe.at(2, 2) - 0.0199987f) < 0.0001f);
+		assert(std::abs(pe.at(2, 3) - 0.9998000f) < 0.0001f);
+	}
 }
