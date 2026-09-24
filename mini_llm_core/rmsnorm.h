@@ -1,15 +1,16 @@
 #pragma once
 #include "tensor.h"
+#include "vector.h"
 
 namespace llm
 {
     class RMSNorm
     {
-        Tensor m_Gamma;
+        Vector m_Gamma;
         scalar m_Eps;
 
     public:
-        RMSNorm(Tensor const& gamma, scalar eps = 1e-5f);
-        Tensor forward(Tensor const& input) const;
+        RMSNorm(Vector const& gamma, scalar eps = 1e-5f);
+        Matrix forward(Matrix const& input) const;
     };
 }

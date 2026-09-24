@@ -19,6 +19,7 @@ namespace llm
         auto const V{ m_Wv.forward(input) };
 
         auto const dModel{ Q.cols() };
+        assert(dModel % m_NumHeads == 0);
         auto const dHead{ dModel / m_NumHeads };
 
         std::vector<Matrix> headOutputs;

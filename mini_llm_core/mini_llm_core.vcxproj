@@ -164,6 +164,7 @@
     <ClInclude Include="pch.h" />
     <ClInclude Include="rmsnorm.h" />
     <ClInclude Include="tensor.h" />
+    <ClInclude Include="transformer_block.h" />
     <ClInclude Include="vector.h" />
   </ItemGroup>
   <ItemGroup>
@@ -180,6 +181,7 @@
     </ClCompile>
     <ClCompile Include="rmsnorm.cpp" />
     <ClCompile Include="tensor.cpp" />
+    <ClCompile Include="transformer_block.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
