@@ -42,8 +42,8 @@ namespace llm
 		Matrix slice_cols(size_t colStart, size_t count) const;
 		static Matrix concat_cols(std::vector<Matrix> const& parts);
 		Matrix gelu()const;
-		Row<scalar const> row(size_t index)const { return { m_Data.data(), m_CX }; }
-		Row<scalar> row(size_t index) { return { m_Data.data(), m_CX }; }
+		Row<scalar const> row(size_t index)const { return { m_Data.data()+index*m_CX, m_CX }; }
+		Row<scalar> row(size_t index) { return { m_Data.data()+index*m_CX, m_CX }; }
 
 	private:
 		size_t to_index(size_t y, size_t x)const { return y * m_CX + x; }
