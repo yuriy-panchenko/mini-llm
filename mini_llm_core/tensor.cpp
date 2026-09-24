@@ -63,8 +63,9 @@ namespace llm
 	Tensor Tensor::gelu() const
 	{
 		auto ret{ *this };
-		for (auto& val : ret.m_Data)
-			val = GELU(val);
+		std::transform(ret.m_Data.begin(), ret.m_Data.end(), ret.m_Data.begin(), GELU);
+		//for (auto& val : ret.m_Data)
+		//	val = GELU(val);
 		return ret;
 	}
 
@@ -84,69 +85,39 @@ namespace llm
 		return ret;
 	}
 
-	Tensor Tensor::matmul(const Tensor& oth) const
+	/*Tensor Tensor::slice_cols(size_t colStart, size_t count) const
 	{
-		assert(ndim() == 2);
-		assert(ndim() == oth.ndim());
-		assert(shape()[1] == oth.shape()[0]);
-
-		auto const
-			rows{ shape()[0] },
-			cols{ oth.shape()[1] },
-			shared{ oth.shape()[0] };
-
-		Tensor ret{ rows, cols };
-
-		for (size_t iRow = 0; iRow < rows; ++iRow)
-			for (size_t iCol = 0; iCol < cols; ++iCol)
-				for (size_t iShare = 0; iShare < shared; ++iShare)
-					ret.at({ iRow,iCol }) += at({ iRow, iShare }) * oth.at({ iShare, iCol });
-
-		return ret;
-	}
-
-	Tensor Tensor::softmax() const
-	{
-		assert(ndim() == 2ull);
-
-		auto const rows{ shape()[0] }, cols{ shape()[1] };
-		Tensor ret{ rows, cols };
+		auto const rows{ shape()[0] };
+		Tensor ret{ rows, count };
 
 		for (size_t r = 0; r < rows; ++r)
+			for (size_t c = 0; c < count; ++c)
+				ret.at({ r, c }) = at({ r, colStart + c });
+
+		return ret;
+	}*/
+
+	/*Tensor Tensor::concat_cols(std::vector<Tensor> const& parts)
+	{
+		auto const rows{ parts[0].shape()[0] };
+		size_t totalCols{};
+		for (auto const& p : parts)
+			totalCols += p.shape()[1];
+
+		Tensor ret{ rows, totalCols };
+		size_t colOffset{};
+
+		for (auto const& p : parts)
 		{
-			scalar rowMax{ at({ r, 0 }) };
-
-			for (size_t c = 1; c < cols; ++c)
-				rowMax = std::max(rowMax, at({ r, c }));
-
-			scalar sum{};
-			for (size_t c = 0; c < cols; ++c)
-			{
-				scalar const e{ std::exp(at({ r, c }) - rowMax) };
-				ret.at({ r, c }) = e;
-				sum += e;
-			}
-
-			for (size_t c = 0; c < cols; ++c)
-				ret.at({ r, c }) /= sum;
+			auto const cols{ p.shape()[1] };
+			for (size_t r = 0; r < rows; ++r)
+				for (size_t c = 0; c < cols; ++c)
+					ret.at({ r, colOffset + c }) = p.at({ r, c });
+			colOffset += cols;
 		}
 
 		return ret;
-	}
-
-	Tensor Tensor::transpose() const
-	{
-		assert(ndim() == 2ull);
-
-		auto const rows{ shape()[0] }, cols{ shape()[1] };
-		Tensor ret{ cols, rows };   // dimensions swapped
-
-		for (size_t r = 0; r < rows; ++r)
-			for (size_t c = 0; c < cols; ++c)
-				ret.at({ c, r }) = at({ r, c });
-
-		return ret;
-	}
+	}*/
 
 	size_t Tensor::to_index(std::initializer_list<size_t> const& adr) const
 	{
@@ -163,11 +134,5 @@ namespace llm
 		assert(ret < size());
 
 		return ret;
-	}
-
-	scalar Tensor::GELU(scalar x)
-	{
-		auto const static f{ static_cast<scalar>(sqrt(2. / std::numbers::pi)) };
-		return  .5f * x * (1.f + static_cast<scalar>(tanh(f * (x + .044715 * x * x * x))));
 	}
 }

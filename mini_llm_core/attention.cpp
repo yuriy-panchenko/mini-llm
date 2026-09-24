@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "attention.h"
+#include "tensor.h"
 
 namespace llm
 {
@@ -11,13 +12,13 @@ namespace llm
 	{
 	}
 
-	Tensor Attention::forward(Tensor const& input) const
+	Matrix Attention::forward(Matrix const& input) const
 	{
 		auto const Q{ m_Wq.forward(input) };
 		auto const K{ m_Wk.forward(input) };
 		auto const V{ m_Wv.forward(input) };
 
-		auto const dK{ static_cast<scalar>(K.shape()[1]) };
+		auto const dK{ static_cast<scalar>(K.cols()) };
 		auto scores{ Q.matmul(K.transpose()) / std::sqrt(dK) };
 
 		auto const attn{ scores.softmax() };

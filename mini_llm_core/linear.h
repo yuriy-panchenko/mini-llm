@@ -1,15 +1,18 @@
 #pragma once
-#include "tensor.h"
+#include "matrix.h"
+#include "vector.h"
+//#include "tensor.h"
 
 namespace llm
 {
 	class Linear
 	{
-		Tensor m_Ws, m_Bias;
+		Matrix m_Ws;
+		Vector m_Bias;
 
 	public:
-		Linear(Tensor const& w, Tensor const& bias);
+		Linear(Matrix const& w, Vector const& bias);
 
-		Tensor forward(const Tensor& input) const;
+		Matrix forward(const Matrix& input) const;
 	};
 }

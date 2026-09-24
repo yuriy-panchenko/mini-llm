@@ -1,7 +1,6 @@
 #pragma once
 #include <initializer_list>
 #include <vector>
-#include <numbers>
 #include "classmap.h"
 
 namespace llm
@@ -41,12 +40,10 @@ namespace llm
 
 		Tensor gelu()const;
 		Tensor norm()const;
-		Tensor matmul(const Tensor&)const;
-		Tensor softmax()const;
-		Tensor transpose() const;
+		//Tensor slice_cols(size_t colStart, size_t count) const;
+		//static Tensor concat_cols(std::vector<Tensor> const& parts);
 
 	private:
-		static scalar GELU(scalar x);
 		size_t to_index(std::initializer_list<size_t> const& adr)const;
 	};
 

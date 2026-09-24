@@ -9,6 +9,6 @@ namespace llm
 
 	public:
 		Attention(Linear const& wq, Linear const& wk, Linear const& wv, Linear const& wo);
-		Tensor forward(Tensor const& input) const;
+		Matrix forward(Matrix const& input) const;
 	};
 }

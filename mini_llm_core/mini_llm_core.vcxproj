@@ -159,14 +159,19 @@
     <ClInclude Include="core.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="linear.h" />
+    <ClInclude Include="matrix.h" />
+    <ClInclude Include="multihead_attention.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="rmsnorm.h" />
     <ClInclude Include="tensor.h" />
+    <ClInclude Include="vector.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="attention.cpp" />
     <ClCompile Include="linear.cpp" />
+    <ClCompile Include="matrix.cpp" />
     <ClCompile Include="mini_llm_core.cpp" />
+    <ClCompile Include="multihead_attention.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
