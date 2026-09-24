@@ -12,14 +12,14 @@ namespace llm
 		return  .5f * x * (1.f + static_cast<scalar>(tanh(f * (x + .044715 * x * x * x))));
 	}
 
-	class Attention;
+	/*class Attention;
 	class Linear;
 	class MultiHeadAttention;
 	class Tensor;
 	class RMSNorm;
 	class Matrix;
 	class Vector;
-	template<typename AttnT>class TransformerBlock;
+	template<typename AttnT>class TransformerBlock;*/
 	//class Tokenizer;
 	//class Transformer;
 }

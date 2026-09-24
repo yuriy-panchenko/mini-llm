@@ -1,6 +1,6 @@
 #pragma once
-#include "tensor.h"
 #include "vector.h"
+#include "matrix.h"
 
 namespace llm
 {

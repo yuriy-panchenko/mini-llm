@@ -275,4 +275,30 @@ int main()
 		assert(std::abs(result.at(1, 1) - 0.45434434f) < 0.0001f);
 		assert(std::abs(result.at(1, 2) - 0.05856703f) < 0.0001f);
 	}
+	{
+		Matrix table{ 4, 3 };
+		table.set({ 1.0f, 2.0f, 3.0f,      // row 0
+					10.0f, 20.0f, 30.0f,   // row 1
+					100.0f, 200.0f, 300.0f,// row 2
+					-1.0f, -2.0f, -3.0f }); // row 3
+
+		Embedding emb{ table };
+
+		auto result{ emb.forward({ 2, 0, 3 }) };
+
+		assert(result.rows() == 3);
+		assert(result.cols() == 3);
+
+		assert(result.at(0, 0) == 100.0f);
+		assert(result.at(0, 1) == 200.0f);
+		assert(result.at(0, 2) == 300.0f);
+
+		assert(result.at(1, 0) == 1.0f);
+		assert(result.at(1, 1) == 2.0f);
+		assert(result.at(1, 2) == 3.0f);
+
+		assert(result.at(2, 0) == -1.0f);
+		assert(result.at(2, 1) == -2.0f);
+		assert(result.at(2, 2) == -3.0f);
+	}
 }
