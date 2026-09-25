@@ -612,23 +612,22 @@ int main()
 		auto ids3{ tok.encode("xyz!") };
 		assert(tok.decode(ids3) == "xyz!");
 	}
+	std::ifstream file("text.txt");
+	std::string corpus{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
+
+	std::cout << corpus << std::endl;
+
 	{
 		// End-to-end demo: real text through Tokenizer -> Embedding -> one causal
 		// TransformerBlock -> output head. Weights are randomly initialized (fixed seed
 		// above, so this is reproducible) — there's no training yet, so the "predictions"
 		// are meaningless, but this exercises the whole pipeline on real input for the
 		// first time, rather than the hand-crafted small matrices the earlier tests use.
-		
+
 		/*std::wifstream file("text.txt");
 		file.imbue(std::locale(file.getloc(), new std::codecvt_utf8<wchar_t>));
 		std::wstring text{ std::istreambuf_iterator<wchar_t>(file), std::istreambuf_iterator<wchar_t>() };*/
 
-		std::ifstream file("text.txt");
-		std::string text{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
-		
-		std::cout << text << std::endl;
-
-		auto const corpus{ text };
 		/*std::string const corpus{
 			"the quick brown fox jumps over the lazy dog. "
 			"pack my box with five dozen liquor jugs. "
@@ -636,8 +635,16 @@ int main()
 
 		Tokenizer tok;
 		tok.train(corpus, 0x400);
+		//tok.train("aaabdaaabac", 0x400);
+		{
+			auto ids{ tok.encode(corpus) };
+			auto s{ tok.decode(ids) };
+			assert(corpus == s);
+		}
 
 		auto ids{ tok.encode("the quick fox") };
+		assert(tok.decode(ids) == "the quick fox");
+		//auto ids{ tok.encode(corpus) };
 		assert(!ids.empty());
 
 		size_t const dModel{ 8 }, dHidden{ 16 };
@@ -675,17 +682,76 @@ int main()
 		// on real text, not to produce anything meaningful yet.
 		std::vector<Tokenizer::TokenId> predicted;
 		predicted.reserve(logits.rows());
+
 		for (size_t r = 0; r < logits.rows(); ++r)
 		{
-			size_t argmax{ 0 };
-			for (size_t c = 1; c < logits.cols(); ++c)
-				if (logits.at(r, c) > logits.at(r, argmax))
-					argmax = c;
-			predicted.push_back(argmax);
+			auto row{ logits.row(r) };
+			auto itMax{ std::max_element(row.begin(),row.end()) };
+			predicted.push_back(std::distance(row.begin(), itMax));
 		}
 
 		std::cout << "Input:      \"" << tok.decode(ids) << "\"\n";
 		std::cout << "Vocab size: " << vocabSize << "\n";
 		std::cout << "Predicted (untrained, argmax per position): \"" << tok.decode(predicted) << "\"\n";
+	}
+	{
+		// sketch – not yet runnable
+		Tokenizer tok;
+		tok.train(corpus, /*vocabSize=*/1024);          // or load a saved tokenizer
+
+		// build a tiny model (keep it small while debugging)
+		size_t const d_model = 64;
+		size_t const n_layers = 2;
+		size_t const n_heads = 4;
+		size_t const vocab = tok.vocab_size();
+		size_t const ctx = 64;                     // start short
+
+		MultiHeadAttention causalAttn{
+			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
+			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
+			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
+			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
+			/*causal=*/true };
+
+		RMSNorm norm1{ Vector{d_model, 1.f} };
+		RMSNorm norm2{ Vector{d_model, 1.f} };
+
+		TransformerBlock<MultiHeadAttention> block{
+			causalAttn, norm1,
+			Linear{ Matrix{d_model, ctx}.xavier(g_Rng,g_Dist), Vector{ctx}.random(g_Rng,g_Dist) },
+			Linear{ Matrix{ctx, ctx}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
+			norm2 };
+
+		//Embedding tokenEmbedding{ random_matrix(vocab, d_model) };
+		Model<MultiHeadAttention> model{
+			Embedding{Matrix{vocab, d_model}.xavier(g_Rng,g_Dist)} ,
+			{block},
+			Linear{Matrix{d_model, vocab}.xavier(g_Rng,g_Dist),Vector{vocab}} }; /* construct with random / Xavier init */;
+
+		// simple data: sliding windows over tokenised corpus
+		auto all_ids = tok.encode(corpus);
+
+		scalar lr = 3e-4f;
+		for (int step = 0; step < 5000; ++step)
+		{
+			// 1. sample a random window
+			size_t start = g_Rng() % (all_ids.size() - ctx - 1);
+			std::vector<size_t> x(all_ids.begin() + start,
+				all_ids.begin() + start + ctx);
+			std::vector<size_t> y(all_ids.begin() + start + 1,
+				all_ids.begin() + start + ctx + 1);
+
+			// 2. forward
+			Matrix logits = model.forward(x);           // ctx × vocab
+
+			// 3. loss
+			scalar loss = cross_entropy(logits, y);
+			if (step % 10 == 0)
+				std::cout << "step " << step << "  loss " << loss << '\n';
+
+			// 4. backward + update  ← this is the missing piece
+			// model.backward(…);   or  manual gradients
+			// apply_sgd(model, lr);
+		}
 	}
 }

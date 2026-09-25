@@ -21,6 +21,15 @@ namespace llm
 		m_Data = std::move(data);
 	}
 
+	Matrix Matrix::xavier(std::mt19937 rng, std::uniform_real_distribution<scalar> dist)const
+	{
+		auto ret{*this};
+		auto const stddev{ std::sqrt(2. / m_CX) };
+		std::transform(ret.m_Data.begin(), ret.m_Data.end(), ret.m_Data.begin(),
+			[&](double) { return dist(rng) * stddev; });
+		return ret;
+	}
+
 	Matrix Matrix::matmul(const Matrix& oth) const
 	{
 		assert(m_CX == oth.m_CY);

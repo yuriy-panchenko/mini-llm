@@ -5,6 +5,7 @@ namespace llm
 {
 	Matrix scaled_dot_product_attention(Matrix const& Q, Matrix const& K, Matrix const& V, bool causal = false);
 	Matrix sinusoidal_positional_encoding(size_t seqLen, size_t dModel);
+	scalar cross_entropy(Matrix const& logits, std::vector<size_t> const& targets);
 
 	class Attention
 	{

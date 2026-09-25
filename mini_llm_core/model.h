@@ -20,6 +20,12 @@ namespace llm
 			, m_OutputHead{ outputHead }
 		{}
 
+		Model(Embedding&& tokenEmbedding, std::vector<TransformerBlock<AttnT>>&& blocks, Linear&& outputHead)
+			:m_TokenEmbedding{ std::move(tokenEmbedding) }
+			, m_Blocks{ std::move(blocks) }
+			, m_OutputHead{ std::move(outputHead) }
+		{}
+
 		Matrix forward(std::vector<size_t> const& ids) const
 		{
 			auto const tokenEmb{ m_TokenEmbedding.forward(ids) };

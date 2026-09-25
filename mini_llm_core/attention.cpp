@@ -43,6 +43,28 @@ namespace llm
 		return pe;
 	}
 
+	scalar cross_entropy(Matrix const& logits, std::vector<size_t> const& targets)
+	{
+		assert(logits.rows() == targets.size());
+		assert(logits.cols() > 0);
+
+		scalar loss = 0.f;
+
+		for (size_t t = 0; t < targets.size(); ++t)
+		{
+			// stable log-softmax of row t
+			auto const row{ logits.row(t) };
+			const scalar max_logit{ *std::max_element(row.begin(),row.end()) };
+			scalar sum_exp = 0.f;
+
+			for (auto val : row)
+				sum_exp += std::exp(val - max_logit);
+
+			loss -= row[targets[t]] - max_logit - std::log(sum_exp);
+		}
+		return loss / static_cast<scalar>(targets.size());
+	}
+
 	Attention::Attention(Linear const& wq, Linear const& wk, Linear const& wv, Linear const& wo, bool causal)
 		:m_Wq{ wq }
 		, m_Wk{ wk }

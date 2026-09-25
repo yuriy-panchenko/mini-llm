@@ -54,19 +54,7 @@ namespace llm
 			m_IdToBytes.push_back(m_IdToBytes[pair.first] + m_IdToBytes[pair.second]);
 			m_MergeRank[pair] = m_Merges.size();
 			m_Merges.push_back(pair);
-
-			std::vector<TokenId> merged;
-			merged.reserve(tokens.size());
-
-			for (size_t i = 0; i < tokens.size(); ++i)
-				if (i + 1 < tokens.size() && tokens[i] == pair.first && tokens[i + 1] == pair.second)
-				{
-					merged.push_back(newId);
-					++i;
-				}
-				else merged.push_back(tokens[i]);
-
-			std::swap(tokens, merged);
+			tokens = merge(tokens, pair, newId);
 		}
 	}
 
@@ -88,25 +76,7 @@ namespace llm
 			if (bestRank == std::numeric_limits<size_t>::max())
 				break;   // no more learned merges apply to what's left
 
-			auto const pair{ m_Merges[bestRank] };
-			auto const newId{ kBaseVocabSize + bestRank };
-
-			std::vector<TokenId> merged;
-			merged.reserve(tokens.size());
-
-			for (size_t i = 0; i < tokens.size();)
-				if (i + 1 < tokens.size() && tokens[i] == pair.first && tokens[i + 1] == pair.second)
-				{
-					merged.push_back(newId);
-					i += 2;
-				}
-				else
-				{
-					merged.push_back(tokens[i]);
-					++i;
-				}
-
-			tokens = std::move(merged);
+			tokens = merge(tokens, m_Merges[bestRank], kBaseVocabSize + bestRank);
 		}
 
 		return tokens;
@@ -120,5 +90,20 @@ namespace llm
 			out += m_IdToBytes[id];
 
 		return out;
+	}
+
+	std::vector<Tokenizer::TokenId> Tokenizer::merge(std::vector<TokenId>& tokens, Pair pair, size_t newId)
+	{
+		std::vector<TokenId> ret;
+		ret.reserve(tokens.size());
+
+		for (size_t i = 0; i < tokens.size(); ++i)
+			if (i + 1 < tokens.size() && tokens[i] == pair.first && tokens[i + 1] == pair.second)
+			{
+				ret.push_back(newId);
+				++i;
+			}
+			else ret.push_back(tokens[i]);
+		return ret;
 	}
 }

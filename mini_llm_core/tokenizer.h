@@ -42,6 +42,7 @@ namespace llm
 		};
 
 		static std::vector<TokenId> to_byte_ids(String const& text);
+		static std::vector<TokenId> merge(std::vector<TokenId>& tokens, Pair pair, size_t newId);
 
 	private:
 		std::vector<String> m_IdToBytes;                       // id -> byte sequence it expands to
