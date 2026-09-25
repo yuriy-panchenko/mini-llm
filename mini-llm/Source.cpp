@@ -1,9 +1,14 @@
 #include <cassert>
 #include <random>
 #include <iostream>
+#include <fstream>
 #include "..\mini_llm_core\core.h"
 
 using namespace llm;
+
+std::wifstream file("text.txt");
+
+std::wstring text{ std::istreambuf_iterator<wchar_t>(file), std::istreambuf_iterator<wchar_t>() };
 
 namespace
 {
@@ -585,11 +590,11 @@ int main()
 		// Tokenizer: classic BPE worked example (Sennrich et al. / Wikipedia's "aaabdaaabac"),
 		// trained for exactly 3 merges: 'aa'->Z, 'ab'->Y, then 'ZY'->X ("aaab" as one token).
 		Tokenizer tok;
-		tok.train("aaabdaaabac", 256 + 3);
+		tok.train(L"aaabdaaabac", 256 + 3);
 
 		assert(tok.vocab_size() == 259);
 
-		auto ids{ tok.encode("aaabdaaabac") };
+		auto ids{ tok.encode(L"aaabdaaabac") };
 		assert(ids.size() == 5);
 		assert(ids[0] == 258);   // "aaab"
 		assert(ids[1] == 100);   // 'd'
@@ -597,15 +602,16 @@ int main()
 		assert(ids[3] == 97);    // 'a'
 		assert(ids[4] == 99);    // 'c'
 
-		assert(tok.decode(ids) == "aaabdaaabac");
+		auto s{ tok.decode(ids) };
+		assert(s == L"aaabdaaabac");
 
 		// Round-trips on text the merges weren't trained on too, including bytes
 		// that never appear in the training corpus at all.
-		auto ids2{ tok.encode("aaabac") };
-		assert(tok.decode(ids2) == "aaabac");
+		auto ids2{ tok.encode(L"aaabac") };
+		assert(tok.decode(ids2) == L"aaabac");
 
-		auto ids3{ tok.encode("xyz!") };
-		assert(tok.decode(ids3) == "xyz!");
+		auto ids3{ tok.encode(L"xyz!") };
+		assert(tok.decode(ids3) == L"xyz!");
 	}
 	{
 		// End-to-end demo: real text through Tokenizer -> Embedding -> one causal
@@ -613,15 +619,16 @@ int main()
 		// above, so this is reproducible) — there's no training yet, so the "predictions"
 		// are meaningless, but this exercises the whole pipeline on real input for the
 		// first time, rather than the hand-crafted small matrices the earlier tests use.
-		std::string const corpus{
+		auto const corpus{text};
+		/*std::string const corpus{
 			"the quick brown fox jumps over the lazy dog. "
 			"pack my box with five dozen liquor jugs. "
-			"the five boxing wizards jump quickly." };
+			"the five boxing wizards jump quickly." };*/
 
 		Tokenizer tok;
-		tok.train(corpus, 256 + 40);
+		tok.train(corpus, 256 + 256);
 
-		auto ids{ tok.encode("the quick fox") };
+		auto ids{ tok.encode(L"the quick fox") };
 		assert(!ids.empty());
 
 		size_t const dModel{ 8 }, dHidden{ 16 };
@@ -668,8 +675,8 @@ int main()
 			predicted.push_back(argmax);
 		}
 
-		std::cout << "Input:      \"" << tok.decode(ids) << "\"\n";
-		std::cout << "Vocab size: " << vocabSize << "\n";
-		std::cout << "Predicted (untrained, argmax per position): \"" << tok.decode(predicted) << "\"\n";
+		std::wcout << L"Input:      \"" << tok.decode(ids) << L"\"\n";
+		std::wcout << L"Vocab size: " << vocabSize << L"\n";
+		std::wcout << L"Predicted (untrained, argmax per position): \"" << tok.decode(predicted) << L"\"\n";
 	}
 }

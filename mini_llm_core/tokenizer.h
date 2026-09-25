@@ -18,13 +18,14 @@ namespace llm
 
 	public:
 		using TokenId = size_t;
+		using String = std::wstring;
 
 		// Learns merges from `corpus` until vocab_size() reaches `vocabSize`, or no
 		// pair occurs more than once, whichever comes first. Resets any previous training.
-		void train(std::string const& corpus, size_t vocabSize);
+		void train(String const& corpus, size_t vocabSize);
 
-		std::vector<TokenId> encode(std::string const& text) const;
-		std::string decode(std::vector<TokenId> const& ids) const;
+		std::vector<TokenId> encode(String const& text) const;
+		String decode(std::vector<TokenId> const& ids) const;
 
 		size_t vocab_size() const { return m_IdToBytes.size(); }
 
@@ -39,10 +40,10 @@ namespace llm
 			}
 		};
 
-		static std::vector<TokenId> to_byte_ids(std::string const& text);
+		static std::vector<TokenId> to_byte_ids(String const& text);
 
 	private:
-		std::vector<std::string> m_IdToBytes;                       // id -> byte sequence it expands to
+		std::vector<String> m_IdToBytes;                       // id -> byte sequence it expands to
 		std::vector<Pair> m_Merges;                                 // merges, in the order they were learned
 		std::unordered_map<Pair, size_t, PairHash> m_MergeRank;     // pair -> index into m_Merges (lower = merged earlier/preferred)
 	};

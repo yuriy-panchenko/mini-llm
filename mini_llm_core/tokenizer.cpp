@@ -3,22 +3,16 @@
 
 namespace llm
 {
-	std::vector<Tokenizer::TokenId> Tokenizer::to_byte_ids(std::string const& text)
+	std::vector<Tokenizer::TokenId> Tokenizer::to_byte_ids(String const& text)
 	{
-		std::vector<TokenId> ids;
-		ids.reserve(text.size());
-
-		for (unsigned char b : text)
-			ids.push_back(static_cast<TokenId>(b));
-
-		return ids;
+		return { text.begin(), text.end() };
 	}
 
-	void Tokenizer::train(std::string const& corpus, size_t vocabSize)
+	void Tokenizer::train(String const& corpus, size_t vocabSize)
 	{
-		m_IdToBytes.assign(kBaseVocabSize, std::string{});
+		m_IdToBytes.assign(kBaseVocabSize, std::wstring{});
 		for (size_t b = 0; b < kBaseVocabSize; ++b)
-			m_IdToBytes[b] = std::string(1, static_cast<char>(b));
+			m_IdToBytes[b] = std::wstring{ 1, static_cast<wchar_t>(b) };
 
 		m_Merges.clear();
 		m_MergeRank.clear();
@@ -54,23 +48,19 @@ namespace llm
 			std::vector<TokenId> merged;
 			merged.reserve(tokens.size());
 
-			for (size_t i = 0; i < tokens.size();)
+			for (size_t i = 0; i < tokens.size(); ++i)
 				if (i + 1 < tokens.size() && tokens[i] == pair.first && tokens[i + 1] == pair.second)
 				{
 					merged.push_back(newId);
-					i += 2;
-				}
-				else
-				{
-					merged.push_back(tokens[i]);
 					++i;
 				}
+				else merged.push_back(tokens[i]);
 
 			tokens = std::move(merged);
 		}
 	}
 
-	std::vector<Tokenizer::TokenId> Tokenizer::encode(std::string const& text) const
+	std::vector<Tokenizer::TokenId> Tokenizer::encode(String const& text) const
 	{
 		auto tokens{ to_byte_ids(text) };
 
@@ -112,9 +102,9 @@ namespace llm
 		return tokens;
 	}
 
-	std::string Tokenizer::decode(std::vector<TokenId> const& ids) const
+	Tokenizer::String Tokenizer::decode(std::vector<TokenId> const& ids) const
 	{
-		std::string out;
+		String out;
 
 		for (auto id : ids)
 			out += m_IdToBytes[id];

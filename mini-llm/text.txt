@@ -1,0 +1,496 @@
+The morning began quietly. A thin layer of fog covered the valley, and the
+first light of the sun appeared behind the hills. Somewhere in the distance,
+a train crossed a bridge. Its wheels produced a rhythmic sound that slowly
+faded into the cold morning air.
+
+A programmer opened the door of a small workshop and switched on the lights.
+The room contained three desks, two monitors, a soldering iron, several boxes
+of electronic components, and an old mechanical keyboard. On the largest
+screen, a program was compiling.
+
+"Good morning," the programmer said.
+
+There was nobody there to answer.
+
+The program finished after 17.4 seconds. The compiler reported 0 errors and
+3 warnings. The programmer looked at the warnings, decided that they were
+harmless, and ran the program anyway.
+
+The result was unexpected.
+
+Instead of printing the number 42, the program printed:
+
+    result = 41.9999999997
+
+"Close enough," the programmer said.
+
+Computers are extremely precise machines, but precision does not always mean
+that the result of a calculation is exactly what a human expects. Floating
+point numbers are represented using a finite number of bits, while many
+decimal numbers require an infinite binary representation. For example,
+0.1 cannot be represented exactly using the usual IEEE 754 floating-point
+format.
+
+This small difference can become important when many calculations are
+combined. Consider a loop that repeatedly adds 0.1:
+
+    double x = 0.0;
+    for (int i = 0; i < 10; ++i)
+        x += 0.1;
+
+A human might expect x to be exactly 1.0. A computer may produce a value such
+as 0.9999999999999999 instead.
+
+This is one reason software engineers must understand not only programming
+languages, but also the mathematical models underneath them.
+
+C++ gives programmers a great deal of control. A programmer can work with
+high-level abstractions such as strings, vectors, maps, and smart pointers.
+At the same time, C++ allows direct manipulation of memory, bytes, pointers,
+CPU instructions, and hardware interfaces.
+
+That flexibility is powerful, but it creates responsibility.
+
+A pointer is an object that stores an address. An address identifies a
+location in memory. If a pointer refers to a valid object, dereferencing the
+pointer can provide access to that object. If the pointer is null, dangling,
+uninitialized, or otherwise invalid, dereferencing it can result in undefined
+behavior.
+
+Modern C++ encourages programmers to prefer safer abstractions when possible.
+For example:
+
+    std::vector<int> values;
+    values.push_back(10);
+    values.push_back(20);
+    values.push_back(30);
+
+The vector manages its own storage. It can grow when additional elements are
+inserted, and its destructor releases the allocated memory automatically.
+
+Another important concept is ownership. When dynamically allocated resources
+are involved, somebody must be responsible for releasing them. Modern C++
+provides smart pointers for this purpose.
+
+    std::unique_ptr<int> value = std::make_unique<int>(42);
+
+The unique_ptr owns the integer. When the unique_ptr is destroyed, the
+integer is automatically destroyed as well.
+
+Shared ownership is possible too:
+
+    std::shared_ptr<int> value = std::make_shared<int>(42);
+
+Several shared_ptr objects can refer to the same object. The object remains
+alive until the last owner releases it.
+
+These mechanisms are examples of a broader idea called RAII: Resource
+Acquisition Is Initialization. The idea is simple. A resource is acquired
+when an object is initialized, and released automatically when that object
+is destroyed.
+
+RAII applies to much more than memory. It can manage files, mutexes,
+database connections, sockets, operating-system handles, and other resources.
+
+Consider a file:
+
+    std::ifstream input("data.txt");
+
+If the object goes out of scope, the file is automatically closed.
+
+This style of programming is particularly useful when exceptions or early
+returns are possible. A function might return from several different places,
+but local objects are still destroyed correctly.
+
+Programming languages are themselves interesting examples of structured
+information. A compiler reads source code as a sequence of characters and
+transforms it through several stages.
+
+First, the source text is processed by the preprocessor in languages such as
+C and C++. Then the compiler performs lexical analysis. The lexer identifies
+tokens such as identifiers, keywords, numbers, operators, punctuation, and
+string literals.
+
+For example, the expression:
+
+    total += price * 1.25;
+
+can be divided into tokens:
+
+    total
+    +=
+    price
+    *
+    1.25
+    ;
+
+A parser then determines how these tokens are related. It builds a structure
+that represents the grammatical meaning of the program. A compiler can
+subsequently transform that structure into an intermediate representation,
+optimize it, and generate machine code.
+
+A tokenizer for natural language has a related but different job.
+
+Suppose the input is:
+
+    The quick brown fox jumps over the lazy dog.
+
+A simple tokenizer might produce:
+
+    The
+    quick
+    brown
+    fox
+    jumps
+    over
+    the
+    lazy
+    dog
+    .
+
+But modern language models often use subword tokenization. A word such as
+"unbelievable" might be represented as several pieces rather than one token.
+The exact representation depends on the tokenizer and its vocabulary.
+
+Numbers create additional interesting cases:
+
+    0
+    1
+    42
+    3.141592653589793
+    -17
+    +25
+    1,000
+    1e6
+    6.022e23
+    0xFF
+    0b101010
+
+Punctuation creates another set of cases:
+
+    hello!
+    hello?
+    hello...
+    "hello"
+    'hello'
+    (hello)
+    [hello]
+    {hello}
+    hello, world;
+    key=value
+    a->b
+    x <= y
+    x != y
+    x && y
+    x || y
+
+A tokenizer should also encounter contractions and possessives:
+
+    don't
+    doesn't
+    can't
+    won't
+    shouldn't
+    I'm
+    you're
+    we're
+    they're
+    John's
+    programmers'
+    children's
+
+Text can contain repeated words as well. Repetition is useful because a
+tokenizer should produce the same token for the same vocabulary item when
+the context does not change.
+
+the cat sat on the mat
+the dog sat on the floor
+the cat looked at the dog
+the dog looked at the cat
+the cat walked toward the door
+the dog walked toward the door
+the door opened
+the cat entered
+the dog entered
+the cat and the dog sat together
+
+Here is another paragraph with unusual word lengths. A tiny word can be
+important, and an extraordinarilylongwordcanalsobeimportant when testing
+whether a tokenizer handles long sequences correctly. The tokenizer should
+not assume that every word is short. It should also not assume that spaces
+are always present between meaningful pieces of text.
+
+Whitespace matters too.
+
+There are multiple spaces here.
+
+There are tabs		between		some		words.
+
+There are blank lines above.
+
+There may be leading spaces.
+There may be trailing spaces.
+There may be multiple consecutive newlines.
+
+
+
+Unicode provides additional test cases:
+
+English, українська, français, Deutsch, español, italiano, português,
+Ελληνικά, русский, العربية, עברית, 中文, 日本語, 한국어.
+
+Accented characters include:
+
+à â ä æ ç è é ê ë î ï ñ ò ö œ ù ü ÿ
+
+Mathematical symbols include:
+
++ − × ÷ = ≠ ≈ ≤ ≥ ∞ √ ∑ ∏ ∫
+
+Other symbols include:
+
+© ® ™ € £ ¥ $ ₹ ₽ ₿
+
+Emoji can contain surprisingly complicated Unicode sequences:
+
+😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂
+🚗 🚆 ✈️ 🌍 🌙 ⭐ 🔥 💻 🧠 🤖
+👍 👎 👨‍💻 👩‍💻 ❤️ ❤️‍🔥
+
+A tokenizer should not necessarily assume that one visible character equals
+one byte. In UTF-8, a single Unicode code point may occupy multiple bytes.
+Some displayed symbols may consist of multiple code points joined together.
+
+Now consider URLs and paths:
+
+https://example.com
+https://example.com/api/v1/models?id=42
+user@example.com
+C:\Users\Developer\Documents\project\main.cpp
+/usr/local/bin/program
+./src/tokenizer.cpp
+../include/tokenizer.hpp
+
+And programming identifiers:
+
+Tokenizer
+tokenizer
+Token
+token_id
+_token
+__internal
+parseToken
+parse_token
+parseTokenFromText
+UTF8Decoder
+std::vector
+std::unordered_map
+std::string_view
+operator<<
+operator==
+main
+argc
+argv
+
+A language model corpus should contain ordinary sentences too.
+
+The river was moving slowly beneath the bridge. Birds flew between the trees,
+and a bicycle rested against a wooden fence. The air smelled of wet leaves
+after the rain. A person walking along the path stopped for a moment and
+looked at the water.
+
+Nothing unusual happened.
+
+Sometimes nothing unusual happening is itself useful information.
+
+The afternoon became warmer. Clouds disappeared from the sky, and sunlight
+fell directly onto the road. Cars passed occasionally. A cyclist stopped at
+the intersection, checked the traffic, and continued toward the center of
+town.
+
+At 18:30, the temperature was 23.7 degrees Celsius.
+
+At 19:05, it was 21.9 degrees.
+
+At 20:00, it was 19.8 degrees.
+
+Measurements are observations, not explanations. A number describes something
+that was measured, but understanding why the number changed requires additional
+information.
+
+This distinction appears everywhere in science and engineering.
+
+Suppose an experiment produces the following measurements:
+
+    time:     0    1    2    3    4    5
+    value:   10   12   15   19   24   30
+
+A graph may reveal a pattern. A mathematical model may describe that pattern.
+But the model is still an approximation of reality.
+
+The same principle applies to machine learning. A model learns statistical
+relationships from examples. It does not automatically acquire a complete
+understanding of the world.
+
+Training data therefore matters enormously.
+
+Imagine a dataset containing millions of sentences. During training, a neural
+network repeatedly receives sequences of tokens and attempts to predict missing
+or subsequent tokens. Over many iterations, the model adjusts its parameters
+so that its predictions become statistically more useful.
+
+For example:
+
+    The sky is ___.
+
+A model may assign high probability to words such as:
+
+    blue
+    cloudy
+    clear
+    dark
+
+The probabilities depend on the training data and the context.
+
+Now extend the sentence:
+
+    The sky is dark because the storm arrived during the evening.
+
+The additional context changes the likely continuation.
+
+Context is one of the central ideas behind modern language models. A token
+rarely has meaning in complete isolation. The surrounding tokens provide
+information that changes interpretation.
+
+Consider the word "bank":
+
+    She deposited money at the bank.
+
+    We sat beside the river bank.
+
+The same sequence of letters appears in both sentences, but the surrounding
+context provides different information.
+
+Tokenization is therefore only one part of a much larger system. The tokenizer
+converts text into a representation that the neural network can process.
+The model then operates on those token representations.
+
+A vocabulary might contain common words such as:
+
+the
+and
+of
+to
+in
+a
+is
+that
+for
+it
+as
+was
+with
+be
+by
+on
+not
+he
+I
+this
+are
+or
+his
+from
+at
+which
+but
+have
+an
+had
+they
+you
+were
+their
+one
+all
+we
+can
+her
+has
+there
+been
+if
+more
+when
+will
+would
+who
+so
+no
+said
+what
+about
+up
+into
+than
+them
+could
+time
+
+Rare words may be represented using smaller pieces.
+
+For example, a hypothetical tokenizer could split:
+
+    internationalization
+
+into:
+
+    international
+    ization
+
+or perhaps:
+
+    inter
+    national
+    ization
+
+There is no universally correct split. The tokenizer vocabulary and training
+algorithm determine the result.
+
+A useful tokenizer test corpus should therefore contain common words, rare
+words, numbers, punctuation, whitespace, Unicode, code, URLs, paths,
+repetitions, and deliberately awkward examples.
+
+Here are some final stress cases:
+
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+1234567890123456789012345678901234567890
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+????????????????????????????????????????
+-------------------------------
+===============================
+................................
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+hellohellohellohellohellohello
+word_word_word_word_word
+one-two-three-four-five
+can't-won't-shouldn't-couldn't
+C++ C# .NET Java JavaScript TypeScript Python
+GPU CPU RAM SSD HDD USB HDMI TCP UDP HTTP HTTPS
+AI ML NLP LLM CNN RNN MLP MCTS CUDA OpenGL Vulkan
+
+The end of a document is also data.
+
+Sometimes a tokenizer fails not because the text is complicated, but because
+the implementation made an assumption that was never valid in the first
+place. Good test data exists to expose those assumptions.
+
+A tokenizer should be boringly predictable.
+
+Given the same input, it should produce the same output.
+
+Given a sequence of tokens, a decoder should reconstruct the intended text as
+closely as the tokenizer's design permits.
+
+That simple property is one of the foundations of a language-processing
+system.
