@@ -6,13 +6,15 @@ namespace llm
 	Linear::Linear(Matrix const& w, Vector const& bias)
 		:m_Ws{ w }
 		, m_dWs{ w.rows(), w.cols() }
-		, m_LastInput{ w.rows(), w.cols() }
+		, m_LastInput{ 0, w.cols() }
 		, m_Bias{ bias }
 		, m_dBias{ bias.size() }
 	{}
 
-	Matrix Linear::forward(const Matrix& input) const
+	Matrix Linear::forward(const Matrix& input)
 	{
+		m_LastInput = input;
+
 		auto ret{ input.matmul(m_Ws) };
 		auto const
 			rows{ ret.rows() },

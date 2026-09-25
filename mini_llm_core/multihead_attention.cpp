@@ -13,7 +13,7 @@ namespace llm
 		, m_Causal{ causal }
 	{}
 
-	Matrix MultiHeadAttention::forward(Matrix const& input) const
+	Matrix MultiHeadAttention::forward(Matrix const& input)
 	{
 		auto const Q{ m_Wq.forward(input) };
 		auto const K{ m_Wk.forward(input) };

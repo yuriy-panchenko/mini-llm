@@ -13,7 +13,7 @@ namespace llm
 	public:
 		Linear(Matrix const& w, Vector const& bias);
 
-		Matrix forward(const Matrix& input) const;
+		Matrix forward(const Matrix& input);
 		Matrix backward(Matrix const& dOut);
 	};
 }

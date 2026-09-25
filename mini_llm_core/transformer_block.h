@@ -21,7 +21,7 @@ namespace llm
 			, m_Norm2{ norm2 }
 		{}
 
-		Matrix forward(Matrix const& input) const
+		Matrix forward(Matrix const& input)
 		{
 			auto const resid1{ input + m_Attn.forward(m_Norm1.forward(input)) };
 			auto const resid2{ resid1 + m_Ffn2.forward(m_Ffn1.forward(m_Norm2.forward(resid1)).gelu()) };

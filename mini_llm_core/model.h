@@ -26,12 +26,12 @@ namespace llm
 			, m_OutputHead{ std::move(outputHead) }
 		{}
 
-		Matrix forward(std::vector<size_t> const& ids) const
+		Matrix forward(std::vector<size_t> const& ids)
 		{
 			auto const tokenEmb{ m_TokenEmbedding.forward(ids) };
 			auto x{ tokenEmb + sinusoidal_positional_encoding(ids.size(), tokenEmb.cols()) };
 
-			for (auto const& block : m_Blocks)
+			for (auto& block : m_Blocks)
 				x = block.forward(x);
 
 			return m_OutputHead.forward(x);   // seqLen x vocabSize logits

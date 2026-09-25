@@ -73,7 +73,7 @@ namespace llm
 		, m_Causal{ causal }
 	{}
 
-	Matrix Attention::forward(Matrix const& input) const
+	Matrix Attention::forward(Matrix const& input)
 	{
 		auto const Q{ m_Wq.forward(input) };
 		auto const K{ m_Wk.forward(input) };

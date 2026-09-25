@@ -11,6 +11,6 @@ namespace llm
 
 	public:
 		MultiHeadAttention(Linear const& wq, Linear const& wk, Linear const& wv, Linear const& wo, size_t numHeads, bool causal = false);
-		Matrix forward(Matrix const& input) const;
+		Matrix forward(Matrix const& input);
 	};
 }

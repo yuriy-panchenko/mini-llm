@@ -9,8 +9,9 @@ namespace llm
 		, m_dTable{ table.rows(),table.cols() }
 	{}
 
-	Matrix Embedding::forward(std::vector<size_t> const& ids) const
+	Matrix Embedding::forward(std::vector<size_t> const& ids)
 	{
+		m_LastIds = ids;
 		Matrix ret{ ids.size(), m_Table.cols() };
 
 		for (size_t i = 0; i < ids.size(); ++i)
