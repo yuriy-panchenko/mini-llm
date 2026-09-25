@@ -21,6 +21,8 @@ namespace llm
 			T& operator[](size_t i) { return *(b + i); }
 		};
 
+		using MatmulGrads = std::pair<Matrix, Matrix>;
+
 	public:
 		Matrix(size_t rows, size_t columns);
 
@@ -47,6 +49,12 @@ namespace llm
 		Row<scalar const> row(size_t index)const { return { m_Data.data() + index * m_CX, m_CX }; }
 		Row<scalar> row(size_t index) { return { m_Data.data() + index * m_CX, m_CX }; }
 		Matrix xavier(std::mt19937 rng, std::uniform_real_distribution<scalar> dist)const;
+
+		// dC = d(A @ B)  →  dA = dC @ Bᵀ ,  dB = Aᵀ @ dC
+		static MatmulGrads d_matmul(Matrix const& A, Matrix const& B, Matrix const& dC);
+		// element-wise
+		Matrix d_gelu(Matrix const& dy)const;   // dy * gelu'(x)
+		Matrix d_softmax(Matrix const& softmax_out, Matrix const& dy);  // classic Jacobian
 
 	private:
 		size_t to_index(size_t y, size_t x)const { return y * m_CX + x; }

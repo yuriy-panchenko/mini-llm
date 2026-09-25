@@ -7,12 +7,13 @@ namespace llm
 {
 	class Linear
 	{
-		Matrix m_Ws;
-		Vector m_Bias;
+		Matrix m_Ws, m_dWs, m_LastInput;
+		Vector m_Bias, m_dBias;
 
 	public:
 		Linear(Matrix const& w, Vector const& bias);
 
 		Matrix forward(const Matrix& input) const;
+		Matrix backward(Matrix const& dOut);
 	};
 }

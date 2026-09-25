@@ -6,6 +6,7 @@ namespace llm
 {
 	Embedding::Embedding(Matrix const& table)
 		:m_Table{ table }
+		, m_dTable{ table.rows(),table.cols() }
 	{}
 
 	Matrix Embedding::forward(std::vector<size_t> const& ids) const
@@ -20,5 +21,17 @@ namespace llm
 		}
 
 		return ret;
+	}
+
+	void Embedding::backward(Matrix const& dOut)
+	{
+		// scatter-add
+		for (size_t i = 0; i < m_LastIds.size(); ++i)
+		{
+			size_t id = m_LastIds[i];
+
+			for (size_t c = 0; c < m_Table.cols(); ++c)
+				m_dTable.at(id, c) += dOut.at(i, c);
+		}
 	}
 }

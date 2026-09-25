@@ -24,9 +24,9 @@ namespace llm
 	Matrix Matrix::xavier(std::mt19937 rng, std::uniform_real_distribution<scalar> dist)const
 	{
 		auto ret{*this};
-		auto const stddev{ std::sqrt(2. / m_CX) };
+		auto const stddev{ static_cast<scalar>(std::sqrt(2. / m_CX)) };
 		std::transform(ret.m_Data.begin(), ret.m_Data.end(), ret.m_Data.begin(),
-			[&](double) { return dist(rng) * stddev; });
+			[&](scalar) { return dist(rng) * stddev; });
 		return ret;
 	}
 
@@ -131,10 +131,32 @@ namespace llm
 
 		return ret;
 	}
+	
 	Matrix Matrix::gelu() const
 	{
 		auto ret{ *this };
 		std::transform(ret.m_Data.begin(), ret.m_Data.end(), ret.m_Data.begin(), GELU);
 		return ret;
+	}
+
+	Matrix::MatmulGrads Matrix::d_matmul(Matrix const& A, Matrix const& B, Matrix const& dC)
+	{
+		return { dC.matmul(B.transpose()), A.transpose().matmul(dC) };
+	}
+
+	Matrix Matrix::d_gelu(Matrix const& dy) const   // *this == pre-activation
+	{
+		Matrix dx{ rows(), cols() };
+		for (size_t i = 0; i < size(); ++i) {
+			scalar x = m_Data[i];
+			// derivative of 0.5*x*(1+tanh(√(2/π)*(x+0.044715*x³)))
+			scalar u = 0.79788456f * (x + 0.044715f * x * x * x);
+			scalar t = std::tanh(u);
+			scalar sech2 = 1.f - t * t;
+			scalar du = 0.79788456f * (1.f + 3.f * 0.044715f * x * x);
+			scalar gelu_prime = 0.5f * (1.f + t) + 0.5f * x * sech2 * du;
+			dx.m_Data[i] = dy.m_Data[i] * gelu_prime;   // needs friend or public access
+		}
+		return dx;
 	}
 }
