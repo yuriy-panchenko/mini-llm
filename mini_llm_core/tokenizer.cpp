@@ -12,7 +12,7 @@ namespace llm
 	{
 		m_IdToBytes.assign(kBaseVocabSize, std::wstring{});
 		for (size_t b = 0; b < kBaseVocabSize; ++b)
-			m_IdToBytes[b] = std::wstring{ 1, static_cast<wchar_t>(b) };
+			m_IdToBytes[b] = std::wstring(1, static_cast<wchar_t>(b));
 
 		m_Merges.clear();
 		m_MergeRank.clear();

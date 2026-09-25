@@ -6,9 +6,6 @@
 
 using namespace llm;
 
-std::wifstream file("text.txt");
-
-std::wstring text{ std::istreambuf_iterator<wchar_t>(file), std::istreambuf_iterator<wchar_t>() };
 
 namespace
 {
@@ -619,7 +616,11 @@ int main()
 		// above, so this is reproducible) — there's no training yet, so the "predictions"
 		// are meaningless, but this exercises the whole pipeline on real input for the
 		// first time, rather than the hand-crafted small matrices the earlier tests use.
-		auto const corpus{text};
+		std::wifstream file("text.txt");
+		std::wstring text{ std::istreambuf_iterator<wchar_t>(file), std::istreambuf_iterator<wchar_t>() };
+		std::wcout << text << std::endl;
+
+		auto const corpus{ text };
 		/*std::string const corpus{
 			"the quick brown fox jumps over the lazy dog. "
 			"pack my box with five dozen liquor jugs. "
