@@ -711,21 +711,28 @@ int main()
 			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
 			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
 			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
+			n_heads,
 			/*causal=*/true };
 
 		RMSNorm norm1{ Vector{d_model, 1.f} };
 		RMSNorm norm2{ Vector{d_model, 1.f} };
 
-		TransformerBlock<MultiHeadAttention> block{
-			causalAttn, norm1,
-			Linear{ Matrix{d_model, ctx}.xavier(g_Rng,g_Dist), Vector{ctx}.random(g_Rng,g_Dist) },
-			Linear{ Matrix{ctx, ctx}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
-			norm2 };
+		size_t const d_ff{ d_model << 2 };   // classic 4× expansion
+
+		std::vector<TransformerBlock<MultiHeadAttention>> body;
+		body.reserve(n_layers);
+		for (size_t i = 0; i < n_layers; ++i)
+			body.emplace_back(
+				causalAttn, norm1,
+				Linear{ Matrix{d_model, d_ff}.xavier(g_Rng, g_Dist), Vector{d_ff}.random(g_Rng, g_Dist) },
+				Linear{ Matrix{d_ff, d_model}.xavier(g_Rng, g_Dist), Vector{d_model}.random(g_Rng, g_Dist) },
+				norm2
+			);
 
 		//Embedding tokenEmbedding{ random_matrix(vocab, d_model) };
 		Model<MultiHeadAttention> model{
 			Embedding{Matrix{vocab, d_model}.xavier(g_Rng,g_Dist)} ,
-			{block},
+			std::move(body),
 			Linear{Matrix{d_model, vocab}.xavier(g_Rng,g_Dist),Vector{vocab}} }; /* construct with random / Xavier init */;
 
 		// simple data: sliding windows over tokenised corpus
