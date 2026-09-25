@@ -14,11 +14,12 @@ namespace llm
 	// worst case, unseen text just falls back to individual bytes.
 	class Tokenizer
 	{
-		static constexpr size_t kBaseVocabSize{ 256ull };
+		static constexpr size_t kBaseVocabSize{ 0x100 };
 
 	public:
 		using TokenId = size_t;
-		using String = std::wstring;
+		using Char = char;
+		using String = std::basic_string<Char>;
 
 		// Learns merges from `corpus` until vocab_size() reaches `vocabSize`, or no
 		// pair occurs more than once, whichever comes first. Resets any previous training.

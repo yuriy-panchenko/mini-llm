@@ -5,17 +5,27 @@ namespace llm
 {
 	std::vector<Tokenizer::TokenId> Tokenizer::to_byte_ids(String const& text)
 	{
-		return { text.begin(), text.end() };
+		std::vector<Tokenizer::TokenId> ret;
+		ret.reserve(text.length());
+
+		for (auto ch : text)
+			ret.push_back(static_cast<unsigned char>(ch));
+
+		return ret;
 	}
 
 	void Tokenizer::train(String const& corpus, size_t vocabSize)
 	{
-		m_IdToBytes.assign(kBaseVocabSize, std::wstring{});
+		m_IdToBytes.reserve(vocabSize);
+		m_IdToBytes.assign(kBaseVocabSize, {});
 		for (size_t b = 0; b < kBaseVocabSize; ++b)
-			m_IdToBytes[b] = std::wstring(1, static_cast<wchar_t>(b));
+			m_IdToBytes[b] = String(1, static_cast<Char>(b));
 
 		m_Merges.clear();
 		m_MergeRank.clear();
+		auto const rese{ vocabSize > kBaseVocabSize ? vocabSize - kBaseVocabSize : kBaseVocabSize };
+		m_Merges.reserve(rese);
+		m_MergeRank.reserve(rese);
 
 		auto tokens{ to_byte_ids(corpus) };
 
@@ -56,7 +66,7 @@ namespace llm
 				}
 				else merged.push_back(tokens[i]);
 
-			tokens = std::move(merged);
+			std::swap(tokens, merged);
 		}
 	}
 

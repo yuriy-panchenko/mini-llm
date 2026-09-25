@@ -7,4 +7,5 @@
     <BuildDependency Project="mini_llm_core/mini_llm_core.vcxproj" />
   </Project>
   <Project Path="mini_llm_core/mini_llm_core.vcxproj" />
+  <Project Path="TokenTest/TokenTest.vcxproj" Id="e44d7a11-739f-4796-a043-91d10c3cfc09" />
 </Solution>

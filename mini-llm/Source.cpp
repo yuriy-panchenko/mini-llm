@@ -1,7 +1,9 @@
+#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
 #include <cassert>
 #include <random>
 #include <iostream>
 #include <fstream>
+#include <codecvt>
 #include "..\mini_llm_core\core.h"
 
 using namespace llm;
@@ -587,11 +589,11 @@ int main()
 		// Tokenizer: classic BPE worked example (Sennrich et al. / Wikipedia's "aaabdaaabac"),
 		// trained for exactly 3 merges: 'aa'->Z, 'ab'->Y, then 'ZY'->X ("aaab" as one token).
 		Tokenizer tok;
-		tok.train(L"aaabdaaabac", 256 + 3);
+		tok.train("aaabdaaabac", 256 + 3);
 
 		assert(tok.vocab_size() == 259);
 
-		auto ids{ tok.encode(L"aaabdaaabac") };
+		auto ids{ tok.encode("aaabdaaabac") };
 		assert(ids.size() == 5);
 		assert(ids[0] == 258);   // "aaab"
 		assert(ids[1] == 100);   // 'd'
@@ -600,15 +602,15 @@ int main()
 		assert(ids[4] == 99);    // 'c'
 
 		auto s{ tok.decode(ids) };
-		assert(s == L"aaabdaaabac");
+		assert(s == "aaabdaaabac");
 
 		// Round-trips on text the merges weren't trained on too, including bytes
 		// that never appear in the training corpus at all.
-		auto ids2{ tok.encode(L"aaabac") };
-		assert(tok.decode(ids2) == L"aaabac");
+		auto ids2{ tok.encode("aaabac") };
+		assert(tok.decode(ids2) == "aaabac");
 
-		auto ids3{ tok.encode(L"xyz!") };
-		assert(tok.decode(ids3) == L"xyz!");
+		auto ids3{ tok.encode("xyz!") };
+		assert(tok.decode(ids3) == "xyz!");
 	}
 	{
 		// End-to-end demo: real text through Tokenizer -> Embedding -> one causal
@@ -616,9 +618,15 @@ int main()
 		// above, so this is reproducible) — there's no training yet, so the "predictions"
 		// are meaningless, but this exercises the whole pipeline on real input for the
 		// first time, rather than the hand-crafted small matrices the earlier tests use.
-		std::wifstream file("text.txt");
-		std::wstring text{ std::istreambuf_iterator<wchar_t>(file), std::istreambuf_iterator<wchar_t>() };
-		std::wcout << text << std::endl;
+		
+		/*std::wifstream file("text.txt");
+		file.imbue(std::locale(file.getloc(), new std::codecvt_utf8<wchar_t>));
+		std::wstring text{ std::istreambuf_iterator<wchar_t>(file), std::istreambuf_iterator<wchar_t>() };*/
+
+		std::ifstream file("text.txt");
+		std::string text{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
+		
+		std::cout << text << std::endl;
 
 		auto const corpus{ text };
 		/*std::string const corpus{
@@ -627,9 +635,9 @@ int main()
 			"the five boxing wizards jump quickly." };*/
 
 		Tokenizer tok;
-		tok.train(corpus, 256 + 256);
+		tok.train(corpus, 0x400);
 
-		auto ids{ tok.encode(L"the quick fox") };
+		auto ids{ tok.encode("the quick fox") };
 		assert(!ids.empty());
 
 		size_t const dModel{ 8 }, dHidden{ 16 };
@@ -676,8 +684,8 @@ int main()
 			predicted.push_back(argmax);
 		}
 
-		std::wcout << L"Input:      \"" << tok.decode(ids) << L"\"\n";
-		std::wcout << L"Vocab size: " << vocabSize << L"\n";
-		std::wcout << L"Predicted (untrained, argmax per position): \"" << tok.decode(predicted) << L"\"\n";
+		std::cout << "Input:      \"" << tok.decode(ids) << "\"\n";
+		std::cout << "Vocab size: " << vocabSize << "\n";
+		std::cout << "Predicted (untrained, argmax per position): \"" << tok.decode(predicted) << "\"\n";
 	}
 }
