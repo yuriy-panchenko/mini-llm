@@ -7,3 +7,4 @@
 #include "transformer_block.h"
 #include "embedding.h"
 #include "model.h"
+#include "tokenizer.h"

@@ -1,8 +1,44 @@
 #include <cassert>
+#include <random>
 #include <iostream>
 #include "..\mini_llm_core\core.h"
 
 using namespace llm;
+
+namespace
+{
+	// Fixed seed: same "gibberish" every run, since there's no training yet and a
+	// reproducible demo is more useful than a different random mess each time.
+	std::mt19937 g_Rng{ 1234 };
+	std::uniform_real_distribution<scalar> g_Dist{ -0.5f, 0.5f };
+
+	Matrix random_matrix(size_t rows, size_t cols)
+	{
+		Matrix m{ rows, cols };
+		std::vector<scalar> data(rows * cols);
+		std::generate(data.begin(), data.end(), [] { return g_Dist(g_Rng); });
+		m.set(std::move(data));
+		return m;
+	}
+
+	Vector random_vector(size_t n)
+	{
+		Vector v{ n };
+		std::vector<scalar> data(n);
+		std::generate(data.begin(), data.end(), [] { return g_Dist(g_Rng); });
+		v.set(std::move(data));
+		return v;
+	}
+
+	// RMSNorm gamma conventionally starts at 1 (identity scaling), not random —
+	// a random gamma could flip signs or crush the signal for no good reason.
+	Vector ones_vector(size_t n)
+	{
+		Vector v{ n };
+		v.set(std::vector<scalar>(n, 1.0f));
+		return v;
+	}
+}
 
 int main()
 {
@@ -544,5 +580,96 @@ int main()
 		assert(std::abs(logits.at(2, 1) - -0.5249774f) < 0.001f);
 		assert(std::abs(logits.at(2, 2) - 1.5039064f) < 0.001f);
 		assert(std::abs(logits.at(2, 3) - -0.7458587f) < 0.001f);
+	}
+	{
+		// Tokenizer: classic BPE worked example (Sennrich et al. / Wikipedia's "aaabdaaabac"),
+		// trained for exactly 3 merges: 'aa'->Z, 'ab'->Y, then 'ZY'->X ("aaab" as one token).
+		Tokenizer tok;
+		tok.train("aaabdaaabac", 256 + 3);
+
+		assert(tok.vocab_size() == 259);
+
+		auto ids{ tok.encode("aaabdaaabac") };
+		assert(ids.size() == 5);
+		assert(ids[0] == 258);   // "aaab"
+		assert(ids[1] == 100);   // 'd'
+		assert(ids[2] == 258);   // "aaab"
+		assert(ids[3] == 97);    // 'a'
+		assert(ids[4] == 99);    // 'c'
+
+		assert(tok.decode(ids) == "aaabdaaabac");
+
+		// Round-trips on text the merges weren't trained on too, including bytes
+		// that never appear in the training corpus at all.
+		auto ids2{ tok.encode("aaabac") };
+		assert(tok.decode(ids2) == "aaabac");
+
+		auto ids3{ tok.encode("xyz!") };
+		assert(tok.decode(ids3) == "xyz!");
+	}
+	{
+		// End-to-end demo: real text through Tokenizer -> Embedding -> one causal
+		// TransformerBlock -> output head. Weights are randomly initialized (fixed seed
+		// above, so this is reproducible) — there's no training yet, so the "predictions"
+		// are meaningless, but this exercises the whole pipeline on real input for the
+		// first time, rather than the hand-crafted small matrices the earlier tests use.
+		std::string const corpus{
+			"the quick brown fox jumps over the lazy dog. "
+			"pack my box with five dozen liquor jugs. "
+			"the five boxing wizards jump quickly." };
+
+		Tokenizer tok;
+		tok.train(corpus, 256 + 40);
+
+		auto ids{ tok.encode("the quick fox") };
+		assert(!ids.empty());
+
+		size_t const dModel{ 8 }, dHidden{ 16 };
+		auto const vocabSize{ tok.vocab_size() };
+
+		Embedding tokenEmbedding{ random_matrix(vocabSize, dModel) };
+
+		Attention causalAttn{
+			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+			/*causal=*/true };
+
+		RMSNorm norm1{ ones_vector(dModel) };
+		RMSNorm norm2{ ones_vector(dModel) };
+
+		TransformerBlock<Attention> block{
+			causalAttn, norm1,
+			Linear{ random_matrix(dModel, dHidden), random_vector(dHidden) },
+			Linear{ random_matrix(dHidden, dModel), random_vector(dModel) },
+			norm2 };
+
+		Linear outputHead{ random_matrix(dModel, vocabSize), random_vector(vocabSize) };
+
+		Model<Attention> model{ tokenEmbedding, std::vector<TransformerBlock<Attention>>{ block }, outputHead };
+
+		auto logits{ model.forward(ids) };
+
+		assert(logits.rows() == ids.size());
+		assert(logits.cols() == vocabSize);
+
+		// Greedy-decode: argmax token at each position. Gibberish by construction
+		// (untrained weights) — this is here to prove the pipeline runs end to end
+		// on real text, not to produce anything meaningful yet.
+		std::vector<Tokenizer::TokenId> predicted;
+		predicted.reserve(logits.rows());
+		for (size_t r = 0; r < logits.rows(); ++r)
+		{
+			size_t argmax{ 0 };
+			for (size_t c = 1; c < logits.cols(); ++c)
+				if (logits.at(r, c) > logits.at(r, argmax))
+					argmax = c;
+			predicted.push_back(argmax);
+		}
+
+		std::cout << "Input:      \"" << tok.decode(ids) << "\"\n";
+		std::cout << "Vocab size: " << vocabSize << "\n";
+		std::cout << "Predicted (untrained, argmax per position): \"" << tok.decode(predicted) << "\"\n";
 	}
 }
