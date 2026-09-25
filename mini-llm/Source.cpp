@@ -443,4 +443,106 @@ int main()
 		assert(std::abs(pe.at(2, 2) - 0.0199987f) < 0.0001f);
 		assert(std::abs(pe.at(2, 3) - 0.9998000f) < 0.0001f);
 	}
+	{
+		// Model<Attention>: Embedding + sinusoidal positional encoding + one causal
+		// TransformerBlock + output head, end to end. Reference computed via numpy in float32.
+		size_t const vocabSize{ 4 }, dModel{ 4 }, dHidden{ 4 };
+
+		Matrix table{ vocabSize, dModel };
+		table.set({ -0.251f,  0.901f,  0.464f,  0.197f,
+					-0.688f, -0.688f, -0.884f,  0.732f,
+					 0.202f,  0.416f, -0.959f,  0.940f,
+					 0.665f, -0.575f, -0.636f, -0.633f });
+		Embedding tokenEmbedding{ table };
+
+		Matrix Wq{ dModel, dModel };
+		Wq.set({ -0.392f,  0.050f, -0.136f, -0.418f,
+				  0.224f, -0.721f, -0.416f, -0.267f,
+				 -0.088f,  0.570f, -0.601f,  0.028f,
+				  0.185f, -0.907f,  0.215f, -0.659f });
+		Vector bq{ dModel };
+		bq.set({ -0.174f, 0.180f, 0.186f, 0.123f });
+
+		Matrix Wk{ dModel, dModel };
+		Wk.set({ -0.391f, -0.805f,  0.368f, -0.120f,
+				 -0.756f, -0.010f, -0.931f,  0.819f,
+				 -0.482f,  0.325f, -0.377f,  0.040f,
+				  0.093f, -0.630f,  0.939f,  0.550f });
+		Vector bk{ dModel };
+		bk.set({ 0.176f, 0.158f, 0.039f, 0.169f });
+
+		Matrix Wv{ dModel, dModel };
+		Wv.set({ -0.823f, -0.608f, -0.910f, -0.349f,
+				 -0.223f, -0.457f,  0.657f, -0.286f,
+				 -0.438f,  0.085f, -0.718f,  0.604f,
+				 -0.851f,  0.974f,  0.544f, -0.603f });
+		Vector bv{ dModel };
+		bv.set({ -0.198f, 0.126f, 0.083f, 0.092f });
+
+		Matrix Wo{ dModel, dModel };
+		Wo.set({ 0.543f, -0.852f, -0.283f, -0.768f,
+				  0.726f,  0.247f, -0.338f, -0.873f,
+				 -0.378f, -0.350f,  0.459f,  0.275f,
+				  0.774f, -0.056f, -0.761f,  0.426f });
+		Vector bo{ dModel };
+		bo.set({ 0.104f, 0.025f, 0.108f, -0.002f });
+
+		Attention causalAttn{ Linear{ Wq, bq }, Linear{ Wk, bk }, Linear{ Wv, bv }, Linear{ Wo, bo }, /*causal=*/true };
+
+		Vector gamma1{ dModel };
+		gamma1.set({ 1.009f, 0.971f, 0.810f, 0.843f });
+		RMSNorm norm1{ gamma1 };
+
+		Matrix Wf1{ dModel, dHidden };
+		Wf1.set({ -0.937f,  0.273f, -0.371f,  0.017f,
+				   0.815f, -0.501f, -0.179f,  0.511f,
+				  -0.542f, -0.846f, -0.420f, -0.678f,
+				   0.859f,  0.616f,  0.267f,  0.743f });
+		Vector bf1{ dHidden };
+		bf1.set({ 0.121f, -0.125f, 0.157f, 0.016f });
+
+		Matrix Wf2{ dHidden, dModel };
+		Wf2.set({ 0.615f,  0.792f, -0.364f, -0.780f,
+				  -0.544f, -0.146f,  0.636f,  0.721f,
+				  -0.986f,  0.021f, -0.165f, -0.556f,
+				  -0.760f, -0.325f,  0.886f, -0.354f });
+		Vector bf2{ dModel };
+		bf2.set({ 0.008f, 0.081f, -0.055f, 0.189f });
+
+		Vector gamma2{ dModel };
+		gamma2.set({ 1.185f, 0.901f, 0.999f, 0.920f });
+		RMSNorm norm2{ gamma2 };
+
+		TransformerBlock<Attention> block{ causalAttn, norm1, Linear{ Wf1, bf1 }, Linear{ Wf2, bf2 }, norm2 };
+
+		Matrix Wout{ dModel, vocabSize };
+		Wout.set({ -0.430f, -0.926f,  0.219f,  0.005f,
+				   -0.897f, -0.443f,  0.817f, -0.521f,
+				   -0.710f, -0.021f,  0.971f, -0.516f,
+					0.344f,  0.523f, -0.525f,  0.456f });
+		Vector bout{ vocabSize };
+		bout.set({ -0.053f, 0.053f, 0.053f, 0.014f });
+
+		Model<Attention> model{ tokenEmbedding, std::vector<TransformerBlock<Attention>>{ block }, Linear{ Wout, bout } };
+
+		auto logits{ model.forward({ 2, 0, 3 }) };
+
+		assert(logits.rows() == 3);
+		assert(logits.cols() == vocabSize);
+
+		assert(std::abs(logits.at(0, 0) - -3.9641535f) < 0.001f);
+		assert(std::abs(logits.at(0, 1) - -1.0988278f) < 0.001f);
+		assert(std::abs(logits.at(0, 2) - 4.0095810f) < 0.001f);
+		assert(std::abs(logits.at(0, 3) - -2.5665348f) < 0.001f);
+
+		assert(std::abs(logits.at(1, 0) - -4.6517696f) < 0.001f);
+		assert(std::abs(logits.at(1, 1) - -1.1724832f) < 0.001f);
+		assert(std::abs(logits.at(1, 2) - 4.7731414f) < 0.001f);
+		assert(std::abs(logits.at(1, 3) - -2.7810917f) < 0.001f);
+
+		assert(std::abs(logits.at(2, 0) - -1.4987745f) < 0.001f);
+		assert(std::abs(logits.at(2, 1) - -0.5249774f) < 0.001f);
+		assert(std::abs(logits.at(2, 2) - 1.5039064f) < 0.001f);
+		assert(std::abs(logits.at(2, 3) - -0.7458587f) < 0.001f);
+	}
 }

@@ -1,7 +1,5 @@
-// embedding.h
 #pragma once
 #include "matrix.h"
-#include <vector>
 
 namespace llm
 {
