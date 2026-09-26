@@ -20,11 +20,8 @@ Tokenizer tok;
 std::string read_file(fs::path const& filename)
 {
 	std::ifstream file{ filename, std::ios::binary };
-
 	if (file)
-	{
 		return { istreambuf_iterator<char>{file},istreambuf_iterator<char>{} };
-	}
 	else throw std::runtime_error("Cannot open file: " + filename.string());
 
 }
@@ -33,7 +30,7 @@ string read_all_files(fs::path const& root)
 {
 	string ret;
 
-	cout << "Reading \'*.txt\' files in " << root;
+	cout << "Reading \'*.txt\' files in " << root<<"\n\n";
 
 	size_t file_count{};
 	for (auto const& en : fs::directory_iterator{ root })
@@ -42,10 +39,14 @@ string read_all_files(fs::path const& root)
 			string text;
 			try
 			{
-				cout << '\n' << file_count + 1 << ". File " << en.path().filename();
+				cout << file_count + 1 << " " << en.path().filename();
 				text = read_file(en.path());
 				++file_count;
 				cout << '\t' << fs::file_size(en.path());
+
+				if (file_count % 4)
+					cout << '\t';
+				else cout << '\n';
 			}
 			catch (const std::exception&)
 			{
@@ -83,7 +84,7 @@ int main()
 	tok.reset(vocab_size);
 
 	auto tokens{ tok.to_byte_ids(corpus) };
-	size_t milestone{ 0x400ull }, max_len{ 1ull }, best_count;
+	size_t milestone{ 0x200ull }, max_len{ 1ull }, best_count;
 
 	while (tok.vocab_size() < vocab_size)
 	{
@@ -93,7 +94,7 @@ int main()
 
 		if (tok.vocab_size() == milestone)
 		{
-			save_as("vocab" + to_string(milestone / 1000) + "K.tok");
+			save_as("token" + (milestone > 1000 ? to_string(milestone / 1000) + "K" : to_string(milestone)) + ".voc");
 			milestone <<= 1;
 		}
 
@@ -108,5 +109,5 @@ int main()
 		tokens = tok.unite(tokens, best);
 	}
 
-	save_as("vocab32K.tok");
+	save_as("token32K.voc");
 }
