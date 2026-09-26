@@ -36,5 +36,19 @@ namespace llm
 
 			return m_OutputHead.forward(x);   // seqLen x vocabSize logits
 		}
+
+		// model.h, inside Model<AttnT>
+
+		void backward(Matrix const& dLogits)
+		{
+			auto dX{ m_OutputHead.backward(dLogits) };
+
+			for (auto it = m_Blocks.rbegin(); it != m_Blocks.rend(); ++it)
+				dX = it->backward(dX);
+
+			// sinusoidal_positional_encoding has no learnable params —
+			// its gradient passes through unchanged, so dX goes straight to Embedding.
+			m_TokenEmbedding.backward(dX);
+		}
 	};
 }

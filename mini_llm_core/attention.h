@@ -19,6 +19,7 @@ namespace llm
 		Matrix const& attn, Matrix const& dOut, bool causal);
 	Matrix sinusoidal_positional_encoding(size_t seqLen, size_t dModel);
 	scalar cross_entropy(Matrix const& logits, std::vector<size_t> const& targets);
+	Matrix cross_entropy_backward(Matrix const& logits, std::vector<size_t> const& targets);
 
 	class Attention
 	{

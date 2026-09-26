@@ -86,6 +86,24 @@ namespace llm
 		return loss / static_cast<scalar>(targets.size());
 	}
 
+	// attention.cpp
+
+	Matrix cross_entropy_backward(Matrix const& logits, std::vector<size_t> const& targets)
+	{
+		assert(logits.rows() == targets.size());
+		assert(logits.cols() > 0);
+
+		auto probs{ logits.softmax() };   // reuses the existing numerically-stable softmax
+		auto const invN{ 1.f / static_cast<scalar>(targets.size()) };
+
+		for (size_t r = 0; r < targets.size(); ++r)
+			probs.at(r, targets[r]) -= 1.f;
+
+		probs /= static_cast<scalar>(targets.size());   // uses operator/=(scalar) already on Matrix
+
+		return probs;
+	}
+
 	Attention::Attention(Linear const& wq, Linear const& wk, Linear const& wv, Linear const& wo, bool causal)
 		:m_Wq{ wq }
 		, m_Wk{ wk }

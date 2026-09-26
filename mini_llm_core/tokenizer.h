@@ -32,6 +32,7 @@ namespace llm
 		using TokenId = unsigned short;
 		using Char = char;
 		using String = std::basic_string<Char>;
+		static constexpr TokenId err_tok{ TokenId(~0x0) };
 
 		// Learns merges from `corpus` until vocab_size() reaches `vocabSize`, or no
 		// pair occurs more than once, whichever comes first. Resets any previous training.
@@ -42,8 +43,16 @@ namespace llm
 
 		size_t vocab_size() const { return m_IdToBytes.size(); }
 
-	private:
+	public:
 		using Pair = std::pair<TokenId, TokenId>;
+		static constexpr Pair invalid_pair{ err_tok, err_tok };
+		static Tokenizer::Pair find_most_used_pair(std::vector<Tokenizer::TokenId> const& tokens, size_t* pCount = nullptr);
+		static std::vector<TokenId> to_byte_ids(String const& text);
+		std::vector<Tokenizer::TokenId> unite(std::vector<Tokenizer::TokenId> const& tokens, Pair pair);
+		void reset(size_t vocabSize);
+		String text(Pair p)const { return m_IdToBytes[p.first] + m_IdToBytes[p.second]; }
+
+	private:
 
 		struct PairHash
 		{
@@ -53,10 +62,10 @@ namespace llm
 			}
 		};
 
-		static std::vector<TokenId> to_byte_ids(String const& text);
-		static std::vector<TokenId> merge(std::vector<TokenId>& tokens, Pair pair, size_t newId);
+		static std::vector<TokenId> merge(std::vector<TokenId> const& tokens, Pair pair, size_t newId);
 		void Serialize(std::ofstream&) override;
 		void Serialize(std::ifstream&) override;
+
 
 	private:
 		std::vector<String> m_IdToBytes;                       // id -> byte sequence it expands to
