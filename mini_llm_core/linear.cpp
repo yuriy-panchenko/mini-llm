@@ -51,8 +51,13 @@ namespace llm
 
 	void Linear::update(scalar lr)
 	{
-		m_dWs += lr;
-		m_dBias += lr;
+		for (size_t r = 0; r < m_Ws.rows(); ++r)
+		{
+			auto dst{ m_Ws.row(r) };
+			std::transform(dst.begin(), dst.end(), m_dWs.row(r).begin(), dst.begin(), [lr](scalar a, scalar b)->scalar {return a - lr * b; });
+		}
+
+		std::transform(m_Bias.begin(), m_Bias.end(), m_dBias.begin(), m_Bias.begin(), [lr](scalar a, scalar b)->scalar {return a - lr * b; });
 	}
 
 	void Linear::zero_grad()

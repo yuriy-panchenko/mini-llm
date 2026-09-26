@@ -132,9 +132,9 @@ namespace llm
 		}
 	}
 
-	Tokenizer::Pair Tokenizer::find_most_used_pair(std::vector<Tokenizer::TokenId> const& tokens, size_t *pCount)
+	Tokenizer::Pair Tokenizer::find_most_used_pair(std::vector<Tokenizer::TokenId> const& tokens, size_t* pCount)
 	{
-		std::map<Pair, size_t> counts;
+		std::unordered_map<Pair, size_t, PairHash> counts;
 
 		for (size_t i = 0; i + 1 < tokens.size(); ++i)
 			++counts[{ tokens[i], tokens[i + 1] }];

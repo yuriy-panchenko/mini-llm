@@ -70,7 +70,7 @@ namespace llm
 
 	void RMSNorm::update(scalar lr)
 	{
-		m_dGamma += lr;
+		std::transform(m_Gamma.begin(), m_Gamma.end(), m_dGamma.begin(), m_Gamma.begin(), [lr](scalar a, scalar b)->scalar {return a - lr * b; });
 	}
 
 	void RMSNorm::zero_grad()

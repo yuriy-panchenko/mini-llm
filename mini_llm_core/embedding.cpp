@@ -35,12 +35,16 @@ namespace llm
 				m_dTable.at(id, c) += dOut.at(i, c);
 		}
 	}
-	
+
 	void Embedding::update(scalar lr)
 	{
-		m_dTable += lr;
+		for (size_t r = 0; r < m_Table.rows(); ++r)
+		{
+			auto dst{ m_Table.row(r) };
+			std::transform(dst.begin(), dst.end(), m_dTable.row(r).begin(), dst.begin(), [lr](scalar a, scalar b)->scalar {return a - lr * b; });
+		}
 	}
-	
+
 	void Embedding::zero_grad()
 	{
 		m_dTable.fill({});
