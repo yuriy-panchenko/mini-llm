@@ -7,22 +7,27 @@ namespace llm
 {
 	std::vector<Tokenizer::TokenId> Tokenizer::to_byte_ids(String const& text)
 	{
-		std::vector<unsigned char> mid{ text.begin(), text.end() };
-		return { mid.begin(), mid.end() };
+		/*std::vector<Tokenizer::TokenId> ret(text.length());
+		auto itText{ text.begin() };
+		for (auto& tok : ret)
+			tok = static_cast<TokenId>(*itText++);
+		return ret;*/
+		std::vector<unsigned char> v{text.begin(),text.end()};
+		return {v.begin(),v.end()};
 	}
 
 	void Tokenizer::train(String const& corpus, size_t vocabSize)
 	{
 		reset(vocabSize);
-
-		auto tokens{ to_byte_ids(corpus) };
+		tokenize(corpus);
 
 		while (m_IdToBytes.size() < vocabSize)
 		{
-			auto const best{ find_most_used_pair(tokens) };
+			size_t occ{};
+			auto const best{ find_most_used_pair(&occ) };
 			if (best == invalid_pair)
 				break;
-			tokens = unite(tokens, best);
+			unite(best, occ);
 		}
 	}
 
@@ -68,6 +73,22 @@ namespace llm
 		for (size_t i = 0; i < tokens.size(); ++i)
 			if (i + 1 < tokens.size() && tokens[i] == pair.first && tokens[i + 1] == pair.second)
 			{
+				ret.push_back(TokenId(newId));
+				++i;
+			}
+			else ret.push_back(tokens[i]);
+		return ret;
+	}
+
+	std::vector<Tokenizer::TokenId> Tokenizer::merge(std::vector<TokenId> const& tokens, Pair pair, size_t newId, std::vector<size_t>& tokenIdxs)
+	{
+		std::vector<TokenId> ret;
+		ret.reserve(tokens.size());
+
+		for (size_t i = 0; i < tokens.size(); ++i)
+			if (i + 1 < tokens.size() && tokens[i] == pair.first && tokens[i + 1] == pair.second)
+			{
+				tokenIdxs.push_back(ret.size());
 				ret.push_back(TokenId(newId));
 				++i;
 			}
@@ -132,18 +153,13 @@ namespace llm
 		}
 	}
 
-	Tokenizer::Pair Tokenizer::find_most_used_pair(std::vector<Tokenizer::TokenId> const& tokens, size_t* pCount)
+	Tokenizer::Pair Tokenizer::find_most_used_pair(size_t* pCount)
 	{
-		std::unordered_map<Pair, size_t, PairHash> counts;
-
-		for (size_t i = 0; i + 1 < tokens.size(); ++i)
-			++counts[{ tokens[i], tokens[i + 1] }];
-
-		if (!counts.empty())
+		if (!m_Counts.empty())
 		{
-			auto best{ counts.begin() };
+			auto best{ m_Counts.begin() };
 
-			for (auto it = counts.begin(); it != counts.end(); ++it)
+			for (auto it = m_Counts.begin(); it != m_Counts.end(); ++it)
 				if (it->second > best->second)
 					best = it;
 
@@ -157,35 +173,72 @@ namespace llm
 		return invalid_pair;
 	}
 
-	std::vector<Tokenizer::TokenId> Tokenizer::unite(std::vector<Tokenizer::TokenId> const& tokens, Pair pair)
+	void Tokenizer::unite(Pair pair, size_t occurance)
 	{
-		auto const newId{ m_IdToBytes.size() };
-
-		auto cmb_text{ m_IdToBytes[pair.first] + m_IdToBytes[pair.second] };
-		m_IdToBytes.push_back(cmb_text);
-		//max_len = std::max(max_len, m_IdToBytes.back().length());
+		auto const newID{ m_IdToBytes.size() };
+		m_IdToBytes.push_back(m_IdToBytes[pair.first] + m_IdToBytes[pair.second]);
 		m_MergeRank[pair] = m_Merges.size();
 		m_Merges.push_back(pair);
-		/*std::cout
-			<< "\ntoken: " << tokens.size()
-			<< ", lib: " << m_IdToBytes.size()
-			<< ", max_len: " << max_len
-			<< "\t" << best->second << "\t\"" << cmb_text << "\"";*/
-		return merge(tokens, pair, newId);
+		std::vector<size_t> idx;
+		idx.reserve(occurance);
+		m_Tokens = merge(m_Tokens, pair, newID, idx);
+
+		auto const id{ TokenId(newID) };
+		auto decrease = [this](Pair p)
+			{
+				--m_Counts[p];
+				if (!m_Counts[p])
+					m_Counts.erase(p);
+			};
+		for (auto ind : idx)
+		{
+			if (ind + 1 < m_Tokens.size())	//	have element to the right
+			{
+				decrease({ pair.second, m_Tokens[ind + 1] });
+				++m_Counts[{ id, m_Tokens[ind + 1] }];
+			}
+			if (ind)//	have element to the left
+			{
+				decrease({ m_Tokens[ind - 1], pair.first });
+				++m_Counts[{m_Tokens[ind - 1], id}];
+			}
+		}
+		m_Counts.erase(pair);
+
+		auto count_all = [this]()->size_t
+			{
+				size_t ret{};
+				for (auto& item : m_Counts)
+					ret += item.second;
+				return ret;
+			};
+		assert(count_all() == m_Tokens.size() - 1);
 	}
 
 	void Tokenizer::reset(size_t vocabSize)
 	{
 		m_Merges.clear();
 		m_MergeRank.clear();
+		m_Counts.clear();
+		m_Tokens.clear();
 
 		auto const rese{ vocabSize > kBaseVocabSize ? vocabSize - kBaseVocabSize : kBaseVocabSize };
 		m_Merges.reserve(rese);
 		m_MergeRank.reserve(rese);
 		m_IdToBytes.reserve(vocabSize);
 		m_IdToBytes.assign(kBaseVocabSize, {});
+		//m_Counts.reserve(vocabSize);
 
 		for (size_t b = 0; b < kBaseVocabSize; ++b)
 			m_IdToBytes[b] = String(1, static_cast<Char>(b));
+	}
+
+	void Tokenizer::tokenize(String const& corpus)
+	{
+		m_Tokens = to_byte_ids(corpus);
+		m_Counts.clear();
+
+		for (size_t i = 0; i + 1 < m_Tokens.size(); ++i)
+			++m_Counts[{ m_Tokens[i], m_Tokens[i + 1] }];
 	}
 }

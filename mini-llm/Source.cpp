@@ -740,10 +740,17 @@ int main()
 	{
 		Tokenizer tok;
 		//tok.train(corpus, 1024);          // or load a saved tokenizer
-		std::ifstream file{ "..\\GuttenbergLibrary\\Vocabs\\token1024.bin",std::ios::binary };
-		if (file)
+		std::ifstream file{ "..\\GuttenbergLibrary\\Vocabs\\token1K.bin", std::ios::binary };
+		if (!file)
+		{
 			file >> tok;
-		else tok.train(corpus, 1024);          // or load a saved tokenizer
+			std::cout << "\nLoaded token1K.bin ok!";
+		}
+		else
+		{
+			tok.train(corpus, 1024);          // or load a saved tokenizer
+			std::cout << "\nLearned from corpus " << corpus.size() << " chars";
+		}
 
 		size_t const d_model = 64;
 		size_t const n_layers = 2;
@@ -776,9 +783,29 @@ int main()
 		}
 
 		Model<MultiHeadAttention> model{
-			Embedding{ Matrix{vocab, d_model}.xavier(g_Rng, g_Dist) },
-			std::move(body),
-			Linear{ Matrix{d_model, vocab}.xavier(g_Rng, g_Dist), Vector{vocab} } };
+	Embedding{ Matrix{vocab, d_model}.xavier(g_Rng, g_Dist) },
+	std::move(body),
+	Linear{ Matrix{d_model, vocab}.xavier(g_Rng, g_Dist), Vector{vocab} } };
+
+		// Same-input, same-model before/after sample -- unlike the untrained demo
+		// above (different tokenizer, different single-head model), this is a fair
+		// comparison because it's the exact model about to be trained below.
+		auto const sampleIds{ tok.encode("the quick fox") };
+		auto greedy_decode = [&](Model<MultiHeadAttention>& m) {
+			auto logits{ m.forward({ sampleIds.begin(), sampleIds.end() }) };
+			std::vector<Tokenizer::TokenId> predicted;
+			predicted.reserve(logits.rows());
+			for (size_t r = 0; r < logits.rows(); ++r)
+			{
+				auto row{ logits.row(r) };
+				auto itMax{ std::max_element(row.begin(), row.end()) };
+				predicted.push_back((Tokenizer::TokenId)std::distance(row.begin(), itMax));
+			}
+			return tok.decode(predicted);
+			};
+
+		std::cout << "\nSample input: \"" << tok.decode({ sampleIds.begin(), sampleIds.end() }) << "\"\n";
+		std::cout << "Predicted (before training): \"" << greedy_decode(model) << "\"\n";
 
 		auto all_ids = tok.encode(corpus);
 		assert(all_ids.size() > ctx + 1);   // guards the subtraction below
@@ -800,7 +827,10 @@ int main()
 			model.backward(dLogits);
 			model.update(lr);
 		}
+
+		std::cout << "\nPredicted (after training):  \"" << greedy_decode(model) << "\"\n";
 	}
+
 	{
 		// Linear::backward — dInput checked against finite differences.
 		Linear lin{ random_matrix(4, 3), random_vector(3) };

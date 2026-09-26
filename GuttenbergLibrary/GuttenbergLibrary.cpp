@@ -85,24 +85,24 @@ int main()
 
 	//tok.train(read_all_files(file_root), vocab_size);
 	gTok.reset(vocab_size);
+	gTok.tokenize(corpus);
 
-	auto tokens{ gTok.to_byte_ids(corpus) };
 	size_t milestone{ 0x200ull }, max_len{ 1ull }, best_count;
 
 	while (gTok.vocab_size() < vocab_size)
 	{
 		auto const tpStart{ steady_clock::now() };
-		auto const best{ gTok.find_most_used_pair(tokens,&best_count) };
+		auto const best{ gTok.find_most_used_pair(&best_count) };
 		if (best == Tokenizer::invalid_pair)
 			break;
-		tokens = gTok.unite(tokens, best);
+		gTok.unite(best, best_count);
 		auto const tpEnd{ steady_clock::now() };
 
 		{
 			auto cmb_text{ gTok.text(best) };
 			max_len = std::max(max_len, cmb_text.length());
 			std::cout
-				<< "\ntoken: " << tokens.size()
+				<< "\ntoken: " << gTok.tokens().size()
 				<< ", lib: " << gTok.vocab_size()
 				<< ", max_len: " << max_len
 				<< '\t' << fixed << setprecision(3) << duration_cast<milliseconds>(tpEnd - tpStart).count() / 1000.

@@ -46,11 +46,13 @@ namespace llm
 	public:
 		using Pair = std::pair<TokenId, TokenId>;
 		static constexpr Pair invalid_pair{ err_tok, err_tok };
-		static Tokenizer::Pair find_most_used_pair(std::vector<Tokenizer::TokenId> const& tokens, size_t* pCount = nullptr);
+		Pair find_most_used_pair(size_t* pCount = nullptr);
 		static std::vector<TokenId> to_byte_ids(String const& text);
-		std::vector<Tokenizer::TokenId> unite(std::vector<Tokenizer::TokenId> const& tokens, Pair pair);
+		void unite(Pair pair, size_t occurance);
 		void reset(size_t vocabSize);
 		String text(Pair p)const { return m_IdToBytes[p.first] + m_IdToBytes[p.second]; }
+		auto& tokens()const { return m_Tokens; }
+		void tokenize(String const& corpus);
 
 	private:
 
@@ -63,6 +65,7 @@ namespace llm
 		};
 
 		static std::vector<TokenId> merge(std::vector<TokenId> const& tokens, Pair pair, size_t newId);
+		static std::vector<TokenId> merge(std::vector<TokenId> const& tokens, Pair pair, size_t newId, std::vector<size_t>& tokenIdxs);
 		void Serialize(std::ofstream&) override;
 		void Serialize(std::ifstream&) override;
 
@@ -71,5 +74,8 @@ namespace llm
 		std::vector<String> m_IdToBytes;                       // id -> byte sequence it expands to
 		std::vector<Pair> m_Merges;                                 // merges, in the order they were learned
 		std::unordered_map<Pair, size_t, PairHash> m_MergeRank;     // pair -> index into m_Merges (lower = merged earlier/preferred)
+
+		std::unordered_map<Pair, size_t, PairHash> m_Counts;
+		std::vector<Tokenizer::TokenId> m_Tokens;
 	};
 }
