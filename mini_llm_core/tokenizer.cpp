@@ -1,17 +1,21 @@
 #include "pch.h"
 #include "tokenizer.h"
+#include <fstream>
+#include <iostream>
 
 namespace llm
 {
 	std::vector<Tokenizer::TokenId> Tokenizer::to_byte_ids(String const& text)
 	{
-		std::vector<Tokenizer::TokenId> ret;
+		/*
 		ret.reserve(text.length());
 
 		for (auto ch : text)
 			ret.push_back(static_cast<unsigned char>(ch));
+		*/
 
-		return ret;
+		std::vector<unsigned char> mid{ text.begin(), text.end() };
+		return { mid.begin(), mid.end() };
 	}
 
 	void Tokenizer::train(String const& corpus, size_t vocabSize)
@@ -28,6 +32,7 @@ namespace llm
 		m_MergeRank.reserve(rese);
 
 		auto tokens{ to_byte_ids(corpus) };
+		size_t max_len{ 1ull };
 
 		while (m_IdToBytes.size() < vocabSize)
 		{
@@ -51,9 +56,16 @@ namespace llm
 			auto const pair{ best->first };
 			auto const newId{ m_IdToBytes.size() };
 
-			m_IdToBytes.push_back(m_IdToBytes[pair.first] + m_IdToBytes[pair.second]);
+			auto cmb_text{ m_IdToBytes[pair.first] + m_IdToBytes[pair.second] };
+			m_IdToBytes.push_back(cmb_text);
+			max_len = std::max(max_len, m_IdToBytes.back().length());
 			m_MergeRank[pair] = m_Merges.size();
 			m_Merges.push_back(pair);
+			std::cout
+				<< "\ntoken: " << tokens.size()
+				<< ", lib: " << m_IdToBytes.size()
+				<< ", max_len: " << max_len
+				<< "\t" << best->second << "\t\"" << cmb_text << "\"";
 			tokens = merge(tokens, pair, newId);
 		}
 	}
@@ -100,10 +112,67 @@ namespace llm
 		for (size_t i = 0; i < tokens.size(); ++i)
 			if (i + 1 < tokens.size() && tokens[i] == pair.first && tokens[i + 1] == pair.second)
 			{
-				ret.push_back(newId);
+				ret.push_back(TokenId(newId));
 				++i;
 			}
 			else ret.push_back(tokens[i]);
 		return ret;
+	}
+
+	void Tokenizer::Serialize(std::ofstream& s)
+	{
+		unsigned __int64 u64{ m_IdToBytes.size() };
+		s.write((char const*)&u64, sizeof u64);
+		for (auto& str : m_IdToBytes)
+		{
+			unsigned short u16{ (unsigned short)str.length() };
+			s.write((char const*)&u16, sizeof u16);
+			s.write(str.data(), u16);
+		}
+
+		u64 = m_Merges.size();
+		s.write((char const*)&u64, sizeof u64);
+		s.write((char const*)m_Merges.data(), sizeof(Pair) * u64);
+
+		u64 = m_MergeRank.size();
+		s.write((char const*)&u64, sizeof u64);
+		for (auto& item : m_MergeRank)
+		{
+			s.write((char const*)&item.first, sizeof Pair);
+			s.write((char const*)&item.second, sizeof size_t);
+		}
+	}
+
+	void Tokenizer::Serialize(std::ifstream& s)
+	{
+		m_IdToBytes.clear();
+		m_MergeRank.clear();
+		m_Merges.clear();
+
+		unsigned __int64 u64;
+		s.read((char*)&u64, sizeof u64);
+		m_IdToBytes.resize(u64);
+		unsigned short u16;
+		for (auto& str : m_IdToBytes)
+		{
+			s.read((char*)&u16, sizeof u16);
+			str.resize(u16);
+			s.read(str.data(), u16);
+		}
+
+		s.read((char*)&u64, sizeof u64);
+		m_Merges.resize(u64);
+		s.read((char*)m_Merges.data(), sizeof(Pair) * u64);
+
+		s.read((char*)&u64, sizeof u64);
+		m_MergeRank.reserve(u64);
+		Pair p;
+		size_t sz;
+		for (size_t i = 0; i < u64; i++)
+		{
+			s.read((char*)&p, sizeof Pair);
+			s.read((char*)&sz, sizeof size_t);
+			m_MergeRank[p] = sz;
+		}
 	}
 }

@@ -11,6 +11,8 @@ namespace llm
 		Linear m_Ffn1, m_Ffn2;
 		RMSNorm m_Norm2;
 
+		Matrix m_LastFfn1PreGelu;
+
 	public:
 		TransformerBlock(AttnT const& attn, RMSNorm const& norm1,
 			Linear const& ffn1, Linear const& ffn2, RMSNorm const& norm2)
@@ -19,13 +21,36 @@ namespace llm
 			, m_Ffn1{ ffn1 }
 			, m_Ffn2{ ffn2 }
 			, m_Norm2{ norm2 }
+			, m_LastFfn1PreGelu{ 0, 0 }
 		{}
 
 		Matrix forward(Matrix const& input)
 		{
 			auto const resid1{ input + m_Attn.forward(m_Norm1.forward(input)) };
-			auto const resid2{ resid1 + m_Ffn2.forward(m_Ffn1.forward(m_Norm2.forward(resid1)).gelu()) };
-			return resid2;
+
+			m_LastFfn1PreGelu = m_Ffn1.forward(m_Norm2.forward(resid1));
+			auto const ffnOut{ m_Ffn2.forward(m_LastFfn1PreGelu.gelu()) };
+
+			return resid1 + ffnOut;
+		}
+
+		Matrix backward(Matrix const& dOut)
+		{
+			// resid2 = resid1 + Ffn2(gelu(Ffn1(Norm2(resid1))))
+			auto dResid1{ dOut };   // direct residual path: resid1 -> resid2 unchanged
+
+			auto dGeluOut{ m_Ffn2.backward(dOut) };
+			auto dPreGelu{ m_LastFfn1PreGelu.d_gelu(dGeluOut) };
+			auto dNorm2In{ m_Ffn1.backward(dPreGelu) };
+			dResid1 += m_Norm2.backward(dNorm2In);   // + gradient via the FFN branch
+
+			// resid1 = input + Attn(Norm1(input))
+			auto dInput{ dResid1 };   // direct residual path: input -> resid1 unchanged
+
+			auto dNorm1Out{ m_Attn.backward(dResid1) };
+			dInput += m_Norm1.backward(dNorm1Out);   // + gradient via the attention branch
+
+			return dInput;
 		}
 	};
 }

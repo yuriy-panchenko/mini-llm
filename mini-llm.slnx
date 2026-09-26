@@ -3,9 +3,14 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Project Path="GuttenbergLibrary/GuttenbergLibrary.vcxproj" Id="2a2bce92-2749-44ba-ac8f-0714066d4e34">
+    <BuildDependency Project="mini_llm_core/mini_llm_core.vcxproj" />
+  </Project>
   <Project Path="mini-llm/mini-llm.vcxproj">
     <BuildDependency Project="mini_llm_core/mini_llm_core.vcxproj" />
   </Project>
   <Project Path="mini_llm_core/mini_llm_core.vcxproj" />
-  <Project Path="TokenTest/TokenTest.vcxproj" Id="e44d7a11-739f-4796-a043-91d10c3cfc09" />
+  <Project Path="TokenTest/TokenTest.vcxproj" Id="e44d7a11-739f-4796-a043-91d10c3cfc09">
+    <BuildDependency Project="mini_llm_core/mini_llm_core.vcxproj" />
+  </Project>
 </Solution>

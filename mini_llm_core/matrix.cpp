@@ -23,7 +23,7 @@ namespace llm
 
 	Matrix Matrix::xavier(std::mt19937 rng, std::uniform_real_distribution<scalar> dist)const
 	{
-		auto ret{*this};
+		auto ret{ *this };
 		auto const stddev{ static_cast<scalar>(std::sqrt(2. / m_CX)) };
 		std::transform(ret.m_Data.begin(), ret.m_Data.end(), ret.m_Data.begin(),
 			[&](scalar) { return dist(rng) * stddev; });
@@ -131,7 +131,7 @@ namespace llm
 
 		return ret;
 	}
-	
+
 	Matrix Matrix::gelu() const
 	{
 		auto ret{ *this };
@@ -157,6 +157,30 @@ namespace llm
 			scalar gelu_prime = 0.5f * (1.f + t) + 0.5f * x * sech2 * du;
 			dx.m_Data[i] = dy.m_Data[i] * gelu_prime;   // needs friend or public access
 		}
+		return dx;
+	}
+
+	Matrix Matrix::d_softmax(Matrix const& softmax_out, Matrix const& dy)
+	{
+		auto const rows{ softmax_out.rows() }, cols{ softmax_out.cols() };
+		Matrix dx{ rows, cols };
+
+		for (size_t r = 0; r < rows; ++r)
+		{
+			auto smRow{ softmax_out.row(r) };
+			auto itSoftMax{ smRow.begin() };
+			scalar dot{};
+
+			for (auto s : dy.row(r))
+				dot += s * *itSoftMax++;
+
+			itSoftMax = smRow.begin();
+			auto itDy{ dy.row(r).begin() };
+
+			for (auto& s : dx.row(r))
+				s = *itSoftMax++ * (*itDy++ - dot);
+		}
+
 		return dx;
 	}
 }

@@ -672,7 +672,7 @@ int main()
 
 		Model<Attention> model{ tokenEmbedding, std::vector<TransformerBlock<Attention>>{ block }, outputHead };
 
-		auto logits{ model.forward(ids) };
+		auto logits{ model.forward({ids.begin(),ids.end()}) };
 
 		assert(logits.rows() == ids.size());
 		assert(logits.cols() == vocabSize);
@@ -687,7 +687,7 @@ int main()
 		{
 			auto row{ logits.row(r) };
 			auto itMax{ std::max_element(row.begin(),row.end()) };
-			predicted.push_back(std::distance(row.begin(), itMax));
+			predicted.push_back((Tokenizer::TokenId)std::distance(row.begin(), itMax));
 		}
 
 		std::cout << "Input:      \"" << tok.decode(ids) << "\"\n";
@@ -757,7 +757,7 @@ int main()
 				std::cout << "step " << step << "  loss " << loss << '\n';
 
 			// 4. backward + update  ← this is the missing piece
-			// model.backward(…);   or  manual gradients
+			 //model.backward(…);//   or  manual gradients
 			// apply_sgd(model, lr);
 		}
 	}

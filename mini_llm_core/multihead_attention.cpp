@@ -26,15 +26,64 @@ namespace llm
 		std::vector<Matrix> headOutputs;
 		headOutputs.reserve(m_NumHeads);
 
+		m_LastQHeads.clear();
+		m_LastKHeads.clear();
+		m_LastVHeads.clear();
+		m_LastAttnHeads.clear();
+		m_LastQHeads.reserve(m_NumHeads);
+		m_LastKHeads.reserve(m_NumHeads);
+		m_LastVHeads.reserve(m_NumHeads);
+		m_LastAttnHeads.reserve(m_NumHeads);
+
 		for (size_t h = 0; h < m_NumHeads; ++h)
 		{
-			auto const Qh{ Q.slice_cols(h * dHead, dHead) };
-			auto const Kh{ K.slice_cols(h * dHead, dHead) };
-			auto const Vh{ V.slice_cols(h * dHead, dHead) };
+			auto Qh{ Q.slice_cols(h * dHead, dHead) };
+			auto Kh{ K.slice_cols(h * dHead, dHead) };
+			auto Vh{ V.slice_cols(h * dHead, dHead) };
 
-			headOutputs.push_back(scaled_dot_product_attention(Qh, Kh, Vh, m_Causal));
+			auto attnOut{ scaled_dot_product_attention(Qh, Kh, Vh, m_Causal) };
+
+			headOutputs.push_back(attnOut.out);
+			m_LastAttnHeads.push_back(std::move(attnOut.attn));
+			m_LastQHeads.push_back(std::move(Qh));
+			m_LastKHeads.push_back(std::move(Kh));
+			m_LastVHeads.push_back(std::move(Vh));
 		}
 
 		return m_Wo.forward(Matrix::concat_cols(headOutputs));
+	}
+
+	Matrix MultiHeadAttention::backward(Matrix const& dOut)
+	{
+		auto dConcat{ m_Wo.backward(dOut) };   // seqLen x dModel, still concatenated across heads
+
+		auto const dHead{ m_LastQHeads[0].cols() };
+
+		std::vector<Matrix> dQHeads, dKHeads, dVHeads;
+		dQHeads.reserve(m_NumHeads);
+		dKHeads.reserve(m_NumHeads);
+		dVHeads.reserve(m_NumHeads);
+
+		for (size_t h = 0; h < m_NumHeads; ++h)
+		{
+			auto dOutH{ dConcat.slice_cols(h * dHead, dHead) };
+
+			auto grads{ scaled_dot_product_attention_backward(
+				m_LastQHeads[h], m_LastKHeads[h], m_LastVHeads[h], m_LastAttnHeads[h], dOutH, m_Causal) };
+
+			dQHeads.push_back(std::move(grads.dQ));
+			dKHeads.push_back(std::move(grads.dK));
+			dVHeads.push_back(std::move(grads.dV));
+		}
+
+		auto dQ{ Matrix::concat_cols(dQHeads) };
+		auto dK{ Matrix::concat_cols(dKHeads) };
+		auto dV{ Matrix::concat_cols(dVHeads) };
+
+		auto dInput{ m_Wq.backward(dQ) };
+		dInput += m_Wk.backward(dK);
+		dInput += m_Wv.backward(dV);
+
+		return dInput;
 	}
 }

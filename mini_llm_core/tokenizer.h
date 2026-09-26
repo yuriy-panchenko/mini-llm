@@ -12,12 +12,24 @@ namespace llm
 	// new text. Operating on raw bytes rather than characters means decode(encode(x)) == x
 	// for any input, including non-ASCII UTF-8, and there's never an "unknown token" —
 	// worst case, unseen text just falls back to individual bytes.
+	class ISerialize abstract
+	{
+	public:
+		friend std::ofstream& operator<<(std::ofstream& s, ISerialize& o) { o.Serialize(s); return s; }
+		friend std::ifstream& operator>>(std::ifstream& s, ISerialize& o) { o.Serialize(s); return s; }
+	private:
+		virtual void Serialize(std::ofstream&) = 0;
+		virtual void Serialize(std::ifstream&) = 0;
+	};
+
 	class Tokenizer
+		:public ISerialize
 	{
 		static constexpr size_t kBaseVocabSize{ 0x100 };
 
 	public:
-		using TokenId = size_t;
+		//using TokenId = size_t;
+		using TokenId = unsigned short;
 		using Char = char;
 		using String = std::basic_string<Char>;
 
@@ -43,6 +55,8 @@ namespace llm
 
 		static std::vector<TokenId> to_byte_ids(String const& text);
 		static std::vector<TokenId> merge(std::vector<TokenId>& tokens, Pair pair, size_t newId);
+		void Serialize(std::ofstream&) override;
+		void Serialize(std::ifstream&) override;
 
 	private:
 		std::vector<String> m_IdToBytes;                       // id -> byte sequence it expands to

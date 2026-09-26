@@ -54,7 +54,7 @@ namespace llm
 		static MatmulGrads d_matmul(Matrix const& A, Matrix const& B, Matrix const& dC);
 		// element-wise
 		Matrix d_gelu(Matrix const& dy)const;   // dy * gelu'(x)
-		Matrix d_softmax(Matrix const& softmax_out, Matrix const& dy);  // classic Jacobian
+		static Matrix d_softmax(Matrix const& softmax_out, Matrix const& dy);  // classic Jacobian: dx = s ⊙ (dy − Σ(dy⊙s))
 
 	private:
 		size_t to_index(size_t y, size_t x)const { return y * m_CX + x; }
