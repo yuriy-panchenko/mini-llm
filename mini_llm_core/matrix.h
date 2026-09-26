@@ -39,6 +39,7 @@ namespace llm
 		size_t cols()const { return m_CX; }
 		Matrix operator+(Matrix const&)const;
 		void operator+=(Matrix const&);
+		void operator+=(scalar);
 		Matrix transpose() const;
 		Matrix operator/(scalar s)const { auto ret{ *this }; ret /= s; return ret; }
 		void operator/=(scalar s) { std::transform(m_Data.begin(), m_Data.end(), m_Data.begin(), [&](scalar val) {return val / s; }); }
@@ -55,6 +56,7 @@ namespace llm
 		// element-wise
 		Matrix d_gelu(Matrix const& dy)const;   // dy * gelu'(x)
 		static Matrix d_softmax(Matrix const& softmax_out, Matrix const& dy);  // classic Jacobian: dx = s ⊙ (dy − Σ(dy⊙s))
+		void fill(scalar);
 
 	private:
 		size_t to_index(size_t y, size_t x)const { return y * m_CX + x; }

@@ -10,7 +10,7 @@ namespace llm
 	{
 	public:
 		Vector(size_t elem, scalar val = {})
-			:vdb(elem,val)
+			:vdb(elem, val)
 		{}
 
 		void set(vdb const& data) { assert(data.size() == size()); ((vdb&)*this) = data; }
@@ -24,6 +24,16 @@ namespace llm
 			std::transform(ret.begin(), ret.end(), ret.begin(),
 				[&](double) { return dist(rng); });
 			return ret;
+		}
+
+		void fill(scalar s)
+		{
+			std::fill(begin(), end(), s);
+		}
+
+		void operator+=(scalar lr)
+		{
+			std::transform(begin(), end(), begin(), [lr](auto s) {return s + lr; });
 		}
 	};
 }

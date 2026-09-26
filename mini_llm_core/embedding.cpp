@@ -35,4 +35,14 @@ namespace llm
 				m_dTable.at(id, c) += dOut.at(i, c);
 		}
 	}
+	
+	void Embedding::update(scalar lr)
+	{
+		m_dTable += lr;
+	}
+	
+	void Embedding::zero_grad()
+	{
+		m_dTable.fill({});
+	}
 }

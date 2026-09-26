@@ -62,6 +62,11 @@ namespace llm
 		std::transform(m_Data.begin(), m_Data.end(), oth.m_Data.begin(), m_Data.begin(), [](scalar a, scalar b) {return a + b; });
 	}
 
+	void Matrix::operator+=(scalar lr)
+	{
+		std::transform(m_Data.begin(), m_Data.end(), m_Data.begin(), [lr](scalar a) {return a + lr; });
+	}
+
 	Matrix Matrix::transpose() const
 	{
 		Matrix ret{ m_CX, m_CY };   // dimensions swapped
@@ -182,5 +187,10 @@ namespace llm
 		}
 
 		return dx;
+	}
+
+	void Matrix::fill(scalar s)
+	{
+		std::fill(m_Data.begin(), m_Data.end(), s);
 	}
 }

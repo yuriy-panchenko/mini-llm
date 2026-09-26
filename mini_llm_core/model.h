@@ -1,5 +1,6 @@
 #pragma once
 #include "transformer_block.h"
+#include "embedding.h"
 
 namespace llm
 {

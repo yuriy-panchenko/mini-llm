@@ -42,6 +42,47 @@ namespace
 		v.set(std::vector<scalar>(n, 1.0f));
 		return v;
 	}
+
+	// Numeric gradient of a scalar probe loss = sum(forward(X) .* dOutSeed) w.r.t. X,
+	// via central finite differences. Used to check backward()'s returned dInput
+	// against ground truth without needing access to any layer's internal weights.
+	template<typename ForwardFn>
+	Matrix numeric_dInput(Matrix const& X, Matrix const& dOutSeed, ForwardFn forward, scalar eps = 1e-3f)
+	{
+		Matrix g{ X.rows(), X.cols() };
+		for (size_t r = 0; r < X.rows(); ++r)
+		{
+			for (size_t c = 0; c < X.cols(); ++c)
+			{
+				Matrix Xp{ X }, Xm{ X };
+				Xp.at(r, c) += eps;
+				Xm.at(r, c) -= eps;
+
+				auto dotWithSeed = [&](Matrix const& out) {
+					scalar s{};
+					for (size_t rr = 0; rr < out.rows(); ++rr)
+						for (size_t cc = 0; cc < out.cols(); ++cc)
+							s += out.at(rr, cc) * dOutSeed.at(rr, cc);
+					return s;
+					};
+
+				scalar const lp{ dotWithSeed(forward(Xp)) };
+				scalar const lm{ dotWithSeed(forward(Xm)) };
+				g.at(r, c) = (lp - lm) / (2 * eps);
+			}
+		}
+		return g;
+	}
+
+	bool close_enough(Matrix const& a, Matrix const& b, scalar tol = 0.01f)
+	{
+		assert(a.rows() == b.rows() && a.cols() == b.cols());
+		for (size_t r = 0; r < a.rows(); ++r)
+			for (size_t c = 0; c < a.cols(); ++c)
+				if (std::abs(a.at(r, c) - b.at(r, c)) > tol)
+					return false;
+		return true;
+	}
 }
 
 int main()
@@ -585,6 +626,7 @@ int main()
 		assert(std::abs(logits.at(2, 2) - 1.5039064f) < 0.001f);
 		assert(std::abs(logits.at(2, 3) - -0.7458587f) < 0.001f);
 	}
+
 	{
 		// Tokenizer: classic BPE worked example (Sennrich et al. / Wikipedia's "aaabdaaabac"),
 		// trained for exactly 3 merges: 'aa'->Z, 'ab'->Y, then 'ZY'->X ("aaab" as one token).
@@ -612,6 +654,7 @@ int main()
 		auto ids3{ tok.encode("xyz!") };
 		assert(tok.decode(ids3) == "xyz!");
 	}
+
 	std::ifstream file("text.txt");
 	std::string corpus{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
 
@@ -694,10 +737,10 @@ int main()
 		std::cout << "Vocab size: " << vocabSize << "\n";
 		std::cout << "Predicted (untrained, argmax per position): \"" << tok.decode(predicted) << "\"\n";
 	}
-	{
+	/*{
 		// sketch – not yet runnable
 		Tokenizer tok;
-		tok.train(corpus, /*vocabSize=*/1024);          // or load a saved tokenizer
+		tok.train(corpus, 1024);          // or load a saved tokenizer
 
 		// build a tiny model (keep it small while debugging)
 		size_t const d_model = 64;
@@ -712,7 +755,7 @@ int main()
 			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
 			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
 			n_heads,
-			/*causal=*/true };
+			true };
 
 		RMSNorm norm1{ Vector{d_model, 1.f} };
 		RMSNorm norm2{ Vector{d_model, 1.f} };
@@ -733,7 +776,7 @@ int main()
 		Model<MultiHeadAttention> model{
 			Embedding{Matrix{vocab, d_model}.xavier(g_Rng,g_Dist)} ,
 			std::move(body),
-			Linear{Matrix{d_model, vocab}.xavier(g_Rng,g_Dist),Vector{vocab}} }; /* construct with random / Xavier init */;
+			Linear{Matrix{d_model, vocab}.xavier(g_Rng,g_Dist),Vector{vocab}} }; ;
 
 		// simple data: sliding windows over tokenised corpus
 		auto all_ids = tok.encode(corpus);
@@ -760,5 +803,188 @@ int main()
 			 //model.backward(…);//   or  manual gradients
 			// apply_sgd(model, lr);
 		}
+	}*/
+	{
+		// Linear::backward — dInput checked against finite differences.
+		Linear lin{ random_matrix(4, 3), random_vector(3) };
+		Matrix X{ random_matrix(2, 4) };
+		Matrix dOutSeed{ random_matrix(2, 3) };
+
+		lin.forward(X);
+		auto analytic{ lin.backward(dOutSeed) };
+
+		auto numeric{ numeric_dInput(X, dOutSeed, [&](Matrix const& x) {
+			Linear tmp{ lin };
+			return tmp.forward(x);
+		}) };
+
+		assert(close_enough(analytic, numeric));
+	}
+	{
+		// RMSNorm::backward — dInput checked against finite differences.
+		RMSNorm norm{ random_vector(4) };
+		Matrix X{ random_matrix(3, 4) };
+		Matrix dOutSeed{ random_matrix(3, 4) };
+
+		norm.forward(X);
+		auto analytic{ norm.backward(dOutSeed) };
+
+		auto numeric{ numeric_dInput(X, dOutSeed, [&](Matrix const& x) {
+			RMSNorm tmp{ norm };
+			return tmp.forward(x);
+		}) };
+
+		assert(close_enough(analytic, numeric));
+	}
+	{
+		// Attention::backward, non-causal — dInput checked against finite differences.
+		Attention attn{
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) } };
+
+		Matrix X{ random_matrix(3, 4) };
+		Matrix dOutSeed{ random_matrix(3, 4) };
+
+		attn.forward(X);
+		auto analytic{ attn.backward(dOutSeed) };
+
+		auto numeric{ numeric_dInput(X, dOutSeed, [&](Matrix const& x) {
+			Attention tmp{ attn };
+			return tmp.forward(x);
+		}) };
+
+		assert(close_enough(analytic, numeric));
+	}
+	{
+		// Attention::backward, causal — same check, confirms masked-gradient wiring too.
+		Attention attn{
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			/*causal=*/true };
+
+		Matrix X{ random_matrix(3, 4) };
+		Matrix dOutSeed{ random_matrix(3, 4) };
+
+		attn.forward(X);
+		auto analytic{ attn.backward(dOutSeed) };
+
+		auto numeric{ numeric_dInput(X, dOutSeed, [&](Matrix const& x) {
+			Attention tmp{ attn };
+			return tmp.forward(x);
+		}) };
+
+		assert(close_enough(analytic, numeric));
+	}
+	{
+		// MultiHeadAttention::backward, causal, 2 heads — dInput checked against finite differences.
+		MultiHeadAttention mha{
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			2, /*causal=*/true };
+
+		Matrix X{ random_matrix(3, 4) };
+		Matrix dOutSeed{ random_matrix(3, 4) };
+
+		mha.forward(X);
+		auto analytic{ mha.backward(dOutSeed) };
+
+		auto numeric{ numeric_dInput(X, dOutSeed, [&](Matrix const& x) {
+			MultiHeadAttention tmp{ mha };
+			return tmp.forward(x);
+		}) };
+
+		assert(close_enough(analytic, numeric));
+	}
+	{
+		// TransformerBlock<Attention>::backward — dInput checked against finite differences.
+		// Exercises both residual splits and the FFN's GELU backward in one shot.
+		Attention attn{
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			Linear{ random_matrix(4, 4), random_vector(4) },
+			/*causal=*/true };
+
+		TransformerBlock<Attention> block{
+			attn,
+			RMSNorm{ ones_vector(4) },
+			Linear{ random_matrix(4, 6), random_vector(6) },
+			Linear{ random_matrix(6, 4), random_vector(4) },
+			RMSNorm{ ones_vector(4) } };
+
+		Matrix X{ random_matrix(3, 4) };
+		Matrix dOutSeed{ random_matrix(3, 4) };
+
+		block.forward(X);
+		auto analytic{ block.backward(dOutSeed) };
+
+		auto numeric{ numeric_dInput(X, dOutSeed, [&](Matrix const& x) {
+			TransformerBlock<Attention> tmp{ block };
+			return tmp.forward(x);
+		}) };
+
+		assert(close_enough(analytic, numeric));
+	}
+	{
+		// cross_entropy_backward — dLogits checked against finite differences of the scalar loss.
+		Matrix logits{ random_matrix(4, 6) };
+		std::vector<size_t> targets{ 1, 4, 0, 3 };
+
+		auto analytic{ cross_entropy_backward(logits, targets) };
+
+		Matrix numeric{ logits.rows(), logits.cols() };
+		scalar const eps{ 1e-3f };
+		for (size_t r = 0; r < logits.rows(); ++r)
+			for (size_t c = 0; c < logits.cols(); ++c)
+			{
+				Matrix Lp{ logits }, Lm{ logits };
+				Lp.at(r, c) += eps;
+				Lm.at(r, c) -= eps;
+				numeric.at(r, c) = (cross_entropy(Lp, targets) - cross_entropy(Lm, targets)) / (2 * eps);
+			}
+
+		assert(close_enough(analytic, numeric));
+	}
+	{
+		// Model<Attention>::backward, end to end — real gradient signal (cross_entropy_backward),
+		// not a synthetic probe. This only confirms the *wiring* (shapes flow correctly through
+		// OutputHead -> Blocks (reverse) -> Embedding without crashing/mismatching) since there's
+		// no public accessor yet to check dTable/dWs against finite differences directly.
+		size_t const vocabSize{ 5 }, dModel{ 4 }, dHidden{ 6 };
+
+		Embedding tokenEmbedding{ random_matrix(vocabSize, dModel) };
+
+		Attention causalAttn{
+			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+			/*causal=*/true };
+
+		TransformerBlock<Attention> block{
+			causalAttn,
+			RMSNorm{ ones_vector(dModel) },
+			Linear{ random_matrix(dModel, dHidden), random_vector(dHidden) },
+			Linear{ random_matrix(dHidden, dModel), random_vector(dModel) },
+			RMSNorm{ ones_vector(dModel) } };
+
+		Model<Attention> model{
+			tokenEmbedding,
+			std::vector<TransformerBlock<Attention>>{ block },
+			Linear{ random_matrix(dModel, vocabSize), random_vector(vocabSize) } };
+
+		std::vector<size_t> ids{ 2, 0, 3 };
+		std::vector<size_t> targets{ 0, 3, 1 };   // arbitrary "next token" targets
+
+		auto logits{ model.forward(ids) };
+		auto dLogits{ cross_entropy_backward(logits, targets) };
+
+		model.backward(dLogits);   // must not crash/assert; exercises the full reverse chain
 	}
 }

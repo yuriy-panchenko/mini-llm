@@ -5,6 +5,7 @@
 namespace llm
 {
 	class Embedding
+		:public Layer
 	{
 		Matrix m_Table,   // vocabSize x dModel
 			m_dTable;                 // same shape
@@ -14,5 +15,9 @@ namespace llm
 		explicit Embedding(Matrix const& table);
 		Matrix forward(std::vector<size_t> const& ids);
 		void backward(Matrix const& dOut);
+
+		// Inherited via Layer
+		void update(scalar lr) override;
+		void zero_grad() override;
 	};
 }

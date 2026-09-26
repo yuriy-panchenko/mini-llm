@@ -94,8 +94,7 @@ namespace llm
 		assert(logits.cols() > 0);
 
 		auto probs{ logits.softmax() };   // reuses the existing numerically-stable softmax
-		auto const invN{ 1.f / static_cast<scalar>(targets.size()) };
-
+		
 		for (size_t r = 0; r < targets.size(); ++r)
 			probs.at(r, targets[r]) -= 1.f;
 

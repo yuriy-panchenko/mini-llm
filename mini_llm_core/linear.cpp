@@ -48,4 +48,16 @@ namespace llm
 
 		return grads.first;
 	}
+
+	void Linear::update(scalar lr)
+	{
+		m_dWs += lr;
+		m_dBias += lr;
+	}
+
+	void Linear::zero_grad()
+	{
+		m_dWs.fill({});
+		m_dBias.fill({});
+	}
 }

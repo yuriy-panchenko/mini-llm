@@ -67,4 +67,14 @@ namespace llm
 
 		return dX;
 	}
+
+	void RMSNorm::update(scalar lr)
+	{
+		m_dGamma += lr;
+	}
+
+	void RMSNorm::zero_grad()
+	{
+		m_dGamma.fill({});
+	}
 }
