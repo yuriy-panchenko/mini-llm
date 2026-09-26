@@ -112,7 +112,7 @@ int main()
 
 		if (gTok.vocab_size() == milestone)
 		{
-			save_as("Vocabs\\token" + (milestone > 0x400 ? to_string(milestone / 0x400) + "K" : to_string(milestone)) + ".bin");
+			save_as("Vocabs\\token" + (milestone >= 0x400 ? to_string(milestone / 0x400) + "K" : to_string(milestone)) + ".bin");
 			milestone <<= 1;
 		}
 	}

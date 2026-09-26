@@ -21,7 +21,7 @@ namespace llm
 		m_Data = std::move(data);
 	}
 
-	Matrix Matrix::xavier(std::mt19937 rng, std::uniform_real_distribution<scalar> dist)const
+	Matrix Matrix::xavier(std::mt19937& rng, std::uniform_real_distribution<scalar>& dist)const
 	{
 		auto ret{ *this };
 		auto const stddev{ static_cast<scalar>(std::sqrt(2. / m_CX)) };

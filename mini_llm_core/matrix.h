@@ -49,7 +49,7 @@ namespace llm
 		Matrix gelu()const;
 		Row<scalar const> row(size_t index)const { return { m_Data.data() + index * m_CX, m_CX }; }
 		Row<scalar> row(size_t index) { return { m_Data.data() + index * m_CX, m_CX }; }
-		Matrix xavier(std::mt19937 rng, std::uniform_real_distribution<scalar> dist)const;
+		Matrix xavier(std::mt19937& rng, std::uniform_real_distribution<scalar>& dist)const;
 
 		// dC = d(A @ B)  →  dA = dC @ Bᵀ ,  dB = Aᵀ @ dC
 		static MatmulGrads d_matmul(Matrix const& A, Matrix const& B, Matrix const& dC);

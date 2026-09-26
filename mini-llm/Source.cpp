@@ -737,73 +737,70 @@ int main()
 		std::cout << "Vocab size: " << vocabSize << "\n";
 		std::cout << "Predicted (untrained, argmax per position): \"" << tok.decode(predicted) << "\"\n";
 	}
-	/*{
-		// sketch – not yet runnable
+	{
 		Tokenizer tok;
-		tok.train(corpus, 1024);          // or load a saved tokenizer
+		//tok.train(corpus, 1024);          // or load a saved tokenizer
+		std::ifstream file{ "..\\GuttenbergLibrary\\Vocabs\\token1024.bin",std::ios::binary };
+		if (file)
+			file >> tok;
+		else tok.train(corpus, 1024);          // or load a saved tokenizer
 
-		// build a tiny model (keep it small while debugging)
 		size_t const d_model = 64;
 		size_t const n_layers = 2;
 		size_t const n_heads = 4;
 		size_t const vocab = tok.vocab_size();
-		size_t const ctx = 64;                     // start short
-
-		MultiHeadAttention causalAttn{
-			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
-			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
-			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
-			Linear{ Matrix{d_model, d_model}.xavier(g_Rng,g_Dist), Vector{d_model}.random(g_Rng,g_Dist) },
-			n_heads,
-			true };
-
-		RMSNorm norm1{ Vector{d_model, 1.f} };
-		RMSNorm norm2{ Vector{d_model, 1.f} };
+		size_t const ctx = 64;
 
 		size_t const d_ff{ d_model << 2 };   // classic 4× expansion
 
 		std::vector<TransformerBlock<MultiHeadAttention>> body;
 		body.reserve(n_layers);
 		for (size_t i = 0; i < n_layers; ++i)
+		{
+			// Fresh weights per layer -- constructing this outside the loop and
+			// copying it into every emplace_back() would give every layer (and every
+			// one of Wq/Wk/Wv/Wo within a layer) byte-identical starting weights.
+			MultiHeadAttention causalAttn{
+				Linear{ Matrix{d_model, d_model}.xavier(g_Rng, g_Dist), Vector{d_model}.random(g_Rng, g_Dist) },
+				Linear{ Matrix{d_model, d_model}.xavier(g_Rng, g_Dist), Vector{d_model}.random(g_Rng, g_Dist) },
+				Linear{ Matrix{d_model, d_model}.xavier(g_Rng, g_Dist), Vector{d_model}.random(g_Rng, g_Dist) },
+				Linear{ Matrix{d_model, d_model}.xavier(g_Rng, g_Dist), Vector{d_model}.random(g_Rng, g_Dist) },
+				n_heads, true };
+
 			body.emplace_back(
-				causalAttn, norm1,
+				causalAttn,
+				RMSNorm{ Vector{d_model, 1.f} },
 				Linear{ Matrix{d_model, d_ff}.xavier(g_Rng, g_Dist), Vector{d_ff}.random(g_Rng, g_Dist) },
 				Linear{ Matrix{d_ff, d_model}.xavier(g_Rng, g_Dist), Vector{d_model}.random(g_Rng, g_Dist) },
-				norm2
-			);
+				RMSNorm{ Vector{d_model, 1.f} });
+		}
 
-		//Embedding tokenEmbedding{ random_matrix(vocab, d_model) };
 		Model<MultiHeadAttention> model{
-			Embedding{Matrix{vocab, d_model}.xavier(g_Rng,g_Dist)} ,
+			Embedding{ Matrix{vocab, d_model}.xavier(g_Rng, g_Dist) },
 			std::move(body),
-			Linear{Matrix{d_model, vocab}.xavier(g_Rng,g_Dist),Vector{vocab}} }; ;
+			Linear{ Matrix{d_model, vocab}.xavier(g_Rng, g_Dist), Vector{vocab} } };
 
-		// simple data: sliding windows over tokenised corpus
 		auto all_ids = tok.encode(corpus);
+		assert(all_ids.size() > ctx + 1);   // guards the subtraction below
 
 		scalar lr = 3e-4f;
 		for (int step = 0; step < 5000; ++step)
 		{
-			// 1. sample a random window
 			size_t start = g_Rng() % (all_ids.size() - ctx - 1);
-			std::vector<size_t> x(all_ids.begin() + start,
-				all_ids.begin() + start + ctx);
-			std::vector<size_t> y(all_ids.begin() + start + 1,
-				all_ids.begin() + start + ctx + 1);
+			std::vector<size_t> x(all_ids.begin() + start, all_ids.begin() + start + ctx);
+			std::vector<size_t> y(all_ids.begin() + start + 1, all_ids.begin() + start + ctx + 1);
 
-			// 2. forward
-			Matrix logits = model.forward(x);           // ctx × vocab
-
-			// 3. loss
+			Matrix logits = model.forward(x);
 			scalar loss = cross_entropy(logits, y);
 			if (step % 10 == 0)
 				std::cout << "step " << step << "  loss " << loss << '\n';
 
-			// 4. backward + update  ← this is the missing piece
-			 //model.backward(…);//   or  manual gradients
-			// apply_sgd(model, lr);
+			model.zero_grad();
+			auto dLogits = cross_entropy_backward(logits, y);
+			model.backward(dLogits);
+			model.update(lr);
 		}
-	}*/
+	}
 	{
 		// Linear::backward — dInput checked against finite differences.
 		Linear lin{ random_matrix(4, 3), random_vector(3) };

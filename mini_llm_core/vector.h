@@ -18,7 +18,7 @@ namespace llm
 
 		Vector gelu()const { auto ret{ *this }; std::transform(ret.begin(), ret.end(), ret.begin(), GELU); return ret; }
 
-		Vector random(std::mt19937 rng, std::uniform_real_distribution<scalar> dist)const
+		Vector random(std::mt19937& rng, std::uniform_real_distribution<scalar>& dist)const
 		{
 			auto ret{ *this };
 			std::transform(ret.begin(), ret.end(), ret.begin(),
