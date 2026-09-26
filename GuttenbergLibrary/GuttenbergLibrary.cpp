@@ -5,6 +5,7 @@
 #include <fstream>
 #include <filesystem>
 #include <sstream>
+#include <chrono>
 #include "..\mini_llm_core\tokenizer.h"
 
 constexpr auto file_root{ "..\\D184MB\\" };
@@ -13,9 +14,11 @@ constexpr size_t vocab_size{ 0x8000 };
 
 using namespace std;
 using namespace llm;
+using namespace chrono;
 namespace fs = filesystem;
+//namespace clk = chrono;
 
-Tokenizer tok;
+Tokenizer gTok;
 
 std::string read_file(fs::path const& filename)
 {
@@ -30,7 +33,7 @@ string read_all_files(fs::path const& root)
 {
 	string ret;
 
-	cout << "Reading \'*.txt\' files in " << root<<"\n\n";
+	cout << "Reading \'*.txt\' files in " << root << "\n\n";
 
 	size_t file_count{};
 	for (auto const& en : fs::directory_iterator{ root })
@@ -55,7 +58,7 @@ string read_all_files(fs::path const& root)
 			ret.append(std::move(text));
 		}
 
-	cout << "\n==========================================\
+	cout << "\n===============================================================================================\
 		\nAll Files\t" << file_count
 		<< "\nCharacters\t" << ret.length() << endl;
 
@@ -68,7 +71,7 @@ void save_as(fs::path fn)
 	std::ofstream file{ fn, ios::binary };
 	if (file)
 	{
-		file << tok;
+		file << gTok;
 		cout << "OK!";
 	}
 	else cout << "ERR";
@@ -81,33 +84,38 @@ int main()
 	auto const corpus{ read_all_files(file_root) };
 
 	//tok.train(read_all_files(file_root), vocab_size);
-	tok.reset(vocab_size);
+	gTok.reset(vocab_size);
 
-	auto tokens{ tok.to_byte_ids(corpus) };
+	auto tokens{ gTok.to_byte_ids(corpus) };
 	size_t milestone{ 0x200ull }, max_len{ 1ull }, best_count;
 
-	while (tok.vocab_size() < vocab_size)
+	while (gTok.vocab_size() < vocab_size)
 	{
-		auto const best{ tok.find_most_used_pair(tokens,&best_count) };
+		auto const tpStart{ steady_clock::now() };
+		auto const best{ gTok.find_most_used_pair(tokens,&best_count) };
 		if (best == Tokenizer::invalid_pair)
 			break;
+		tokens = gTok.unite(tokens, best);
+		auto const tpEnd{ steady_clock::now() };
 
-		if (tok.vocab_size() == milestone)
 		{
-			save_as("token" + (milestone > 1000 ? to_string(milestone / 1000) + "K" : to_string(milestone)) + ".voc");
-			milestone <<= 1;
+			auto cmb_text{ gTok.text(best) };
+			max_len = std::max(max_len, cmb_text.length());
+			std::cout
+				<< "\ntoken: " << tokens.size()
+				<< ", lib: " << gTok.vocab_size()
+				<< ", max_len: " << max_len
+				<< '\t' << fixed << setprecision(3) << duration_cast<milliseconds>(tpEnd - tpStart).count() / 1000.
+				<< '\t' << best_count << "\t\"" << cmb_text << "\""
+				;
 		}
 
-		auto cmb_text{ tok.text(best) };
-		max_len = std::max(max_len, cmb_text.length());
-		std::cout
-			<< "\ntoken: " << tokens.size()
-			<< ", lib: " << tok.vocab_size()
-			<< ", max_len: " << max_len
-			<< "\t" << best_count << "\t\"" << cmb_text << "\"";
-
-		tokens = tok.unite(tokens, best);
+		if (gTok.vocab_size() == milestone)
+		{
+			save_as("Vocabs\\token" + (milestone > 0x400 ? to_string(milestone / 0x400) + "K" : to_string(milestone)) + ".bin");
+			milestone <<= 1;
+		}
 	}
 
-	save_as("token32K.voc");
+	save_as("Vocabs\\token32K.bin");
 }

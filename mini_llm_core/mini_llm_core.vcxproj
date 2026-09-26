@@ -159,6 +159,7 @@
     <ClInclude Include="core.h" />
     <ClInclude Include="embedding.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="layer.h" />
     <ClInclude Include="linear.h" />
     <ClInclude Include="matrix.h" />
     <ClInclude Include="model.h" />

@@ -6,7 +6,7 @@ namespace llm
 {
     class RMSNorm
     {
-        Vector m_Gamma,m_dGamma;
+        Vector m_Gamma, m_dGamma;
         scalar m_Eps;
         Matrix m_LastInput;
 
