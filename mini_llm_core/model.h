@@ -1,6 +1,7 @@
 #pragma once
 #include "transformer_block.h"
 #include "embedding.h"
+#include "layer.h"
 
 namespace llm
 {
@@ -9,6 +10,7 @@ namespace llm
 	// Softmax/loss is deliberately left to the caller: forward() returns raw logits.
 	template<typename AttnT>
 	class Model
+		:public Layer
 	{
 		Embedding m_TokenEmbedding;
 		std::vector<TransformerBlock<AttnT>> m_Blocks;
@@ -50,6 +52,22 @@ namespace llm
 			// sinusoidal_positional_encoding has no learnable params —
 			// its gradient passes through unchanged, so dX goes straight to Embedding.
 			m_TokenEmbedding.backward(dX);
+		}
+
+		void update(scalar lr) override
+		{
+			m_TokenEmbedding.update(lr);
+			for (auto& block : m_Blocks)
+				block.update(lr);
+			m_OutputHead.update(lr);
+		}
+
+		void zero_grad() override
+		{
+			m_TokenEmbedding.zero_grad();
+			for (auto& block : m_Blocks)
+				block.zero_grad();
+			m_OutputHead.zero_grad();
 		}
 	};
 }

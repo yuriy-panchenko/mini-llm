@@ -139,4 +139,20 @@ namespace llm
 
 		return dInput;
 	}
+	
+	void Attention::update(scalar lr)
+	{
+		m_Wq.update(lr);
+		m_Wk.update(lr);
+		m_Wv.update(lr);
+		m_Wo.update(lr);
+	}
+
+	void Attention::zero_grad()
+	{
+		m_Wq.zero_grad();
+		m_Wk.zero_grad();
+		m_Wv.zero_grad();
+		m_Wo.zero_grad();
+	}
 }

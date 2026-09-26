@@ -1,10 +1,12 @@
 #pragma once
 #include "rmsnorm.h"
+#include "layer.h"
 
 namespace llm
 {
 	template<typename AttnT>
 	class TransformerBlock
+		:public Layer
 	{
 		AttnT m_Attn;
 		RMSNorm m_Norm1;
@@ -51,6 +53,24 @@ namespace llm
 			dInput += m_Norm1.backward(dNorm1Out);   // + gradient via the attention branch
 
 			return dInput;
+		}
+
+		void update(scalar lr) override
+		{
+			m_Attn.update(lr);
+			m_Norm1.update(lr);
+			m_Ffn1.update(lr);
+			m_Ffn2.update(lr);
+			m_Norm2.update(lr);
+		}
+
+		void zero_grad() override
+		{
+			m_Attn.zero_grad();
+			m_Norm1.zero_grad();
+			m_Ffn1.zero_grad();
+			m_Ffn2.zero_grad();
+			m_Norm2.zero_grad();
 		}
 	};
 }
