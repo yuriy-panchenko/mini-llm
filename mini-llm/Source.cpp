@@ -16,7 +16,7 @@ namespace
 #ifdef _DEBUG
 	std::mt19937 g_Rng{ 1234 };
 #else
-	std::mt19937 g_Rng{};
+	std::mt19937 g_Rng{ std::random_device{}() };
 #endif // _DEBUG
 
 	std::normal_distribution<scalar> g_Dist{ 0.f, 1.f };
@@ -838,7 +838,7 @@ int main()
 			model.backward(dLogits);
 			model.update(lr);
 			if (step % 10 == 0)
-				std::cout << "\"" << greedy_decode(model) << "\"\n";
+				std::cout << "\t\"" << greedy_decode(model) << "\"\n";
 		}
 
 		std::cout << "\nPredicted (after training):  \"" << greedy_decode(model) << "\"\n";
