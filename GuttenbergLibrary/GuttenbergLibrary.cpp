@@ -8,7 +8,8 @@
 #include <chrono>
 #include "..\mini_llm_core\tokenizer.h"
 
-constexpr auto file_root{ "..\\D184MB\\" };
+constexpr auto source_root{ "..\\D184MB\\" };
+constexpr auto destin_root{ "..\\Vocabs\\" };
 //constexpr auto filename{ "vocab.tok" };
 constexpr size_t vocab_size{ 0x8000 };
 
@@ -81,13 +82,14 @@ void save_as(fs::path fn)
 
 int main()
 {
-	auto const corpus{ read_all_files(file_root) };
+	auto const corpus{ read_all_files(source_root) };
 
 	//tok.train(read_all_files(file_root), vocab_size);
 	gTok.reset(vocab_size);
 	gTok.tokenize(corpus);
 
 	size_t milestone{ 0x200ull }, max_len{ 1ull }, best_count;
+	std::string cmb_text;
 
 	while (gTok.vocab_size() < vocab_size)
 	{
@@ -95,27 +97,26 @@ int main()
 		auto const best{ gTok.find_most_used_pair(&best_count) };
 		if (best == Tokenizer::invalid_pair)
 			break;
+		auto tok_size{ gTok.get_tokens().size() };
 		gTok.unite(best, best_count);
 		auto const tpEnd{ steady_clock::now() };
 
-		{
-			auto cmb_text{ gTok.text(best) };
-			max_len = std::max(max_len, cmb_text.length());
-			std::cout
-				<< "\ntoken: " << gTok.tokens().size()
-				<< ", lib: " << gTok.vocab_size()
-				<< ", max_len: " << max_len
-				<< '\t' << fixed << setprecision(3) << duration_cast<milliseconds>(tpEnd - tpStart).count() / 1000.
-				<< '\t' << best_count << "\t\"" << cmb_text << "\""
-				;
-		}
+		cmb_text = gTok.text(best);
+		max_len = std::max(max_len, cmb_text.length());
+		std::cout
+			<< "\ntoken: " << tok_size
+			<< ", lib: " << gTok.vocab_size()
+			<< ", max_len: " << max_len
+			<< '\t' << fixed << setprecision(3) << duration_cast<milliseconds>(tpEnd - tpStart).count() / 1000.
+			<< '\t' << best_count << "\t\"" << cmb_text << "\""
+			;
 
 		if (gTok.vocab_size() == milestone)
 		{
-			save_as("Vocabs\\token" + (milestone >= 0x400 ? to_string(milestone / 0x400) + "K" : to_string(milestone)) + ".bin");
+			save_as(std::string{ destin_root } + "token" + (milestone >= 0x400 ? to_string(milestone / 0x400) + "K" : to_string(milestone)) + ".bin");
 			milestone <<= 1;
 		}
 	}
 
-	save_as("Vocabs\\token32K.bin");
+	save_as(std::string{ destin_root } + "token32K.bin");
 }

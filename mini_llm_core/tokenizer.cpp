@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "tokenizer.h"
 #include <fstream>
-//#include <iostream>
+#include <unordered_set>
 
 namespace llm
 {
@@ -85,20 +85,42 @@ namespace llm
 	{
 		std::vector<TokenId> ret;
 		ret.reserve(tokens.size());
-
-		for (size_t i = 0; i < tokens.size(); ++i)
-			if (i + 1 < tokens.size() && tokens[i] == pair.first && tokens[i + 1] == pair.second)
+		unsigned char bit{ 0x00 };
+		constexpr unsigned char mask{ 0x07 }, pattern{ 0x05 };
+		Pair wnd{ {}, tokens.front() };
+		
+		for (size_t i = 1; i < tokens.size(); ++i)
+		{
+			wnd.first = wnd.second;
+			wnd.second = tokens[i];
+			bit <<= 1;
+			if (wnd == pair)
 			{
-				if (i + 2 < tokens.size())
-					decs.push_back({ tokens[i + 1], tokens[i + 2] });
-				if (i)
-					decs.push_back({ tokens[i - 1], tokens[i] });
-
+				bit |= 0x01;
 				tokenIdxs.push_back(ret.size());
 				ret.push_back(TokenId(newId));
 				++i;
 			}
 			else ret.push_back(tokens[i]);
+			if((bit & mask)==pattern)
+				decs.push_back({ tokens[i - 1], tokens[i] });
+
+		}
+		/*for (size_t i = 0; i < tokens.size(); ++i)
+		{
+			bit <<= 1;
+			bit |= isMatchStart[i];
+			bit &= mask;
+			if (bit == pattern)
+				decs.push_back({ tokens[i - 1], tokens[i] });
+		}*/
+
+		// One decision per original boundary index, so an index adjacent to two
+		// back-to-back matches (e.g. "ABAB") isn't decremented twice.
+		/*for (size_t i = 0; i + 1 < tokens.size(); ++i)
+			if (!isMatchStart[i] && ((i > 0 && isMatchStart[i - 1]) || isMatchStart[i + 1]))
+				decs.push_back({ tokens[i], tokens[i + 1] });*/
+
 		return ret;
 	}
 
@@ -188,6 +210,7 @@ namespace llm
 		std::vector<size_t> idx;
 		std::vector<Pair> decs;
 		idx.reserve(occurance);
+		decs.reserve(2 * occurance);
 		m_Tokens = merge(m_Tokens, pair, newID, idx, decs);
 
 		auto const id{ TokenId(newID) };
@@ -202,11 +225,20 @@ namespace llm
 		for (auto& p : decs)
 			decrease(p);
 
+		// m_Tokens is already post-merge here, so a neighbor position that was
+		// itself just merged (back-to-back occurrences, e.g. "ABAB" -> [id,id])
+		// must not be double-counted from both sides.
+		std::unordered_set<size_t> mergedAt(idx.begin(), idx.end());
 		for (auto ind : idx)
 		{
 			if (ind + 1 < m_Tokens.size())	//	have element to the right
-				++m_Counts[{ id, m_Tokens[ind + 1] }];
-			if (ind)//	have element to the left
+			{
+				if (!mergedAt.contains(ind + 1))
+					++m_Counts[{ id, m_Tokens[ind + 1] }];
+				else
+					++m_Counts[{ id, id }];	//	count the new {id,id} edge exactly once
+			}
+			if (ind && !mergedAt.contains(ind - 1))//	have element to the left
 				++m_Counts[{m_Tokens[ind - 1], id}];
 		}
 

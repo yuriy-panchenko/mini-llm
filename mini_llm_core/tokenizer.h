@@ -51,7 +51,7 @@ namespace llm
 		void unite(Pair pair, size_t occurance);
 		void reset(size_t vocabSize);
 		String text(Pair p)const { return m_IdToBytes[p.first] + m_IdToBytes[p.second]; }
-		auto& tokens()const { return m_Tokens; }
+		auto& get_tokens()const { return m_Tokens; }
 		void tokenize(String const& corpus);
 
 	private:
