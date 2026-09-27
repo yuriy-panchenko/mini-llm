@@ -661,11 +661,10 @@ int main()
 	//	assert(tok.decode(ids3) == "xyz!");
 	//}
 
-	std::ifstream file("text.txt");
-	std::string corpus{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
-	corpus = llm::normalize_whitespace(corpus);
-
-	//std::cout << corpus << std::endl;
+	std::ifstream file("conversations.txt");
+	//auto const corpus{ llm::normalize_whitespace(llm::read_all_files("..\\D184MB\\")) };
+	auto const corpus{ llm::normalize_whitespace(std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() }) };
+	std::cout << "Corpus has " << corpus.length() << " chars" << std::endl;
 
 	//{
 	//	// End-to-end demo: real text through Tokenizer -> Embedding -> one causal
@@ -748,11 +747,11 @@ int main()
 	{
 		Tokenizer tok;
 		//tok.train(corpus, 1024);          // or load a saved tokenizer
-		std::ifstream file{ "..\\Vocabs\\token1K.bin", std::ios::binary };
+		std::ifstream file{ "..\\Vocabs\\token512.bin", std::ios::binary };
 		if (file)
 		{
 			file >> tok;
-			std::cout << "\nLoaded token1K.bin ok!";
+			std::cout << "\nDictionary token1K";
 		}
 		else
 		{
@@ -800,7 +799,7 @@ int main()
 		// above (different tokenizer, different single-head model), this is a fair
 		// comparison because it's the exact model about to be trained below.
 		//auto const sampleIds{ tok.encode("the quick fox") };
-		auto const sampleIds{ tok.encode("and the medium on which they may be stored,") };
+		auto const sampleIds{ tok.encode("Hi! How you doing today?") };
 		auto greedy_decode = [&](Model<MultiHeadAttention>& m)
 			{
 				auto logits{ m.forward({ sampleIds.begin(), sampleIds.end() }) };

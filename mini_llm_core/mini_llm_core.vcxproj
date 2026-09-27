@@ -172,6 +172,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="attention.cpp" />
+    <ClCompile Include="classmap.cpp" />
     <ClCompile Include="embedding.cpp" />
     <ClCompile Include="linear.cpp" />
     <ClCompile Include="matrix.cpp" />

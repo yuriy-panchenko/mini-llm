@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "tokenizer.h"
 #include <fstream>
-#include <unordered_set>
+#include <queue>
 
 namespace llm
 {
@@ -33,26 +33,69 @@ namespace llm
 
 	std::vector<Tokenizer::TokenId> Tokenizer::encode(String const& text) const
 	{
-		auto tokens{ to_byte_ids(text) };
+		auto tok{ to_byte_ids(text) };
+		auto const n{ tok.size() };
+		if (n < 2)
+			return tok;
 
-		while (tokens.size() > 1)
+		constexpr size_t null{ std::numeric_limits<size_t>::max() };
+
+		std::vector<size_t> next(n), prev(n), version(n, 0);
+		std::vector<bool> alive(n, true);
+		for (size_t i = 0; i < n; ++i)
 		{
-			size_t bestRank{ std::numeric_limits<size_t>::max() };
-
-			for (size_t i = 0; i + 1 < tokens.size(); ++i)
-			{
-				auto const it{ m_MergeRank.find({ tokens[i], tokens[i + 1] }) };
-				if (it != m_MergeRank.end() && it->second < bestRank)
-					bestRank = it->second;
-			}
-
-			if (bestRank == std::numeric_limits<size_t>::max())
-				break;   // no more learned merges apply to what's left
-
-			tokens = merge(tokens, m_Merges[bestRank], kBaseVocabSize + bestRank);
+			prev[i] = (i == 0) ? null : i - 1;
+			next[i] = (i + 1 < n) ? i + 1 : null;
 		}
 
-		return tokens;
+		struct Entry
+		{
+			size_t rank, left, right, verLeft, verRight;
+			bool operator>(Entry const& o) const { return rank > o.rank; }
+		};
+		std::priority_queue<Entry, std::vector<Entry>, std::greater<>> heap;
+
+		auto tryPush = [&](size_t left)
+			{
+				if (left == null) return;
+				auto const right{ next[left] };
+				if (right == null) return;
+				auto const it{ m_MergeRank.find({ tok[left], tok[right] }) };
+				if (it != m_MergeRank.end())
+					heap.push({ it->second, left, right, version[left], version[right] });
+			};
+
+		for (size_t i = 0; i < n; ++i)
+			tryPush(i);
+
+		while (!heap.empty())
+		{
+			auto const e{ heap.top() };
+			heap.pop();
+
+			if (!alive[e.left] || !alive[e.right] || next[e.left] != e.right
+				|| version[e.left] != e.verLeft || version[e.right] != e.verRight)
+				continue;   // stale -- one side changed since this was pushed
+
+			tok[e.left] = TokenId(kBaseVocabSize + e.rank);   // e.left absorbs e.right
+			++version[e.left];
+			alive[e.right] = false;
+
+			auto const after{ next[e.right] };
+			next[e.left] = after;
+			if (after != null)
+				prev[after] = e.left;
+
+			tryPush(prev[e.left]);   // left neighbour's pair now involves the new token
+			tryPush(e.left);         // e.left's pair with its new right neighbour
+		}
+
+		std::vector<TokenId> out;
+		out.reserve(n);
+		for (size_t p = 0; p != null; p = next[p])
+			out.push_back(tok[p]);
+
+		return out;
 	}
 
 	Tokenizer::String Tokenizer::decode(std::vector<TokenId> const& ids) const
