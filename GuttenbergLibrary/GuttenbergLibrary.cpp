@@ -8,7 +8,10 @@
 #include <chrono>
 #include "..\mini_llm_core\tokenizer.h"
 
-constexpr auto source_root{ "..\\D184MB\\" };
+//constexpr auto source_root{ "..\\D184MB\\" };
+//constexpr auto source_root{ "..\\D1GB\\" };
+constexpr auto source_root{ "..\\D1.7GB\\" };
+//constexpr auto source_root{ "..\\D1GB\\Genome\\" };
 constexpr auto destin_root{ "..\\Vocabs\\" };
 //constexpr auto filename{ "vocab.tok" };
 constexpr size_t vocab_size{ 0x8000 };
@@ -27,6 +30,37 @@ std::string read_file(fs::path const& filename)
 	if (file)
 		return { istreambuf_iterator<char>{file},istreambuf_iterator<char>{} };
 	else throw std::runtime_error("Cannot open file: " + filename.string());
+}
+
+std::string GetGenome(std::ifstream& s)
+{
+	std::string const src{ istreambuf_iterator<char>{s}, istreambuf_iterator<char>{} };
+	std::string ret;
+	ret.reserve(src.length());
+	bool found_start{ false };
+
+	for (auto ch : src)
+		switch (ch)
+		{
+		case 'A':
+		case 'C':
+		case 'G':
+		case 'T':
+			ret.push_back(ch);
+			found_start = ret.size() > 256;
+			break;
+		case '\n':
+		case '\r':
+			break;
+		default:
+			if (found_start)
+				return ret;
+			else if(ret.size() < 256ull)
+				ret.clear();
+			break;
+		}
+
+	return ret;
 }
 
 string read_all_files(fs::path const& root)
@@ -67,7 +101,7 @@ string read_all_files(fs::path const& root)
 
 void save_as(fs::path fn)
 {
-	cout << "\n\nSaving dictionary " << fn.filename() << ".....";
+	cout << "\n\nSaving dictionary " << fn.filename() << "\t............\t";
 	std::ofstream file{ fn, ios::binary };
 	if (file)
 	{
@@ -81,7 +115,11 @@ void save_as(fs::path fn)
 
 int main()
 {
-	auto const corpus{ read_all_files(source_root) };
+	std::string corpus;
+	corpus= read_all_files(source_root) ;
+	//std::ifstream fs{ std::string{source_root} + "2214.txt" };
+	//if (fs)
+	//	corpus = GetGenome(fs);
 
 	//tok.train(read_all_files(file_root), vocab_size);
 	gTok.reset(vocab_size);

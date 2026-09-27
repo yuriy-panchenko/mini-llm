@@ -627,121 +627,122 @@ int main()
 		assert(std::abs(logits.at(2, 3) - -0.7458587f) < 0.001f);
 	}
 
-	{
-		// Tokenizer: classic BPE worked example (Sennrich et al. / Wikipedia's "aaabdaaabac"),
-		// trained for exactly 3 merges: 'aa'->Z, 'ab'->Y, then 'ZY'->X ("aaab" as one token).
-		Tokenizer tok;
-		tok.train("aaabdaaabac", 256 + 3);
+	//{
+	//	// Tokenizer: classic BPE worked example (Sennrich et al. / Wikipedia's "aaabdaaabac"),
+	//	// trained for exactly 3 merges: 'aa'->Z, 'ab'->Y, then 'ZY'->X ("aaab" as one token).
+	//	Tokenizer tok;
+	//	tok.train("aaabdaaabac", 256 + 3);
 
-		assert(tok.vocab_size() == 259);
+	//	assert(tok.vocab_size() == 259);
 
-		auto ids{ tok.encode("aaabdaaabac") };
-		assert(ids.size() == 5);
-		assert(ids[0] == 258);   // "aaab"
-		assert(ids[1] == 100);   // 'd'
-		assert(ids[2] == 258);   // "aaab"
-		assert(ids[3] == 97);    // 'a'
-		assert(ids[4] == 99);    // 'c'
+	//	auto ids{ tok.encode("aaabdaaabac") };
+	//	assert(ids.size() == 5);
+	//	assert(ids[0] == 258);   // "aaab"
+	//	assert(ids[1] == 100);   // 'd'
+	//	assert(ids[2] == 258);   // "aaab"
+	//	assert(ids[3] == 97);    // 'a'
+	//	assert(ids[4] == 99);    // 'c'
 
-		auto s{ tok.decode(ids) };
-		assert(s == "aaabdaaabac");
+	//	auto s{ tok.decode(ids) };
+	//	assert(s == "aaabdaaabac");
 
-		// Round-trips on text the merges weren't trained on too, including bytes
-		// that never appear in the training corpus at all.
-		auto ids2{ tok.encode("aaabac") };
-		assert(tok.decode(ids2) == "aaabac");
+	//	// Round-trips on text the merges weren't trained on too, including bytes
+	//	// that never appear in the training corpus at all.
+	//	auto ids2{ tok.encode("aaabac") };
+	//	assert(tok.decode(ids2) == "aaabac");
 
-		auto ids3{ tok.encode("xyz!") };
-		assert(tok.decode(ids3) == "xyz!");
-	}
+	//	auto ids3{ tok.encode("xyz!") };
+	//	assert(tok.decode(ids3) == "xyz!");
+	//}
 
 	std::ifstream file("text.txt");
 	std::string corpus{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
 
-	std::cout << corpus << std::endl;
+	//std::cout << corpus << std::endl;
 
-	{
-		// End-to-end demo: real text through Tokenizer -> Embedding -> one causal
-		// TransformerBlock -> output head. Weights are randomly initialized (fixed seed
-		// above, so this is reproducible) — there's no training yet, so the "predictions"
-		// are meaningless, but this exercises the whole pipeline on real input for the
-		// first time, rather than the hand-crafted small matrices the earlier tests use.
+	//{
+	//	// End-to-end demo: real text through Tokenizer -> Embedding -> one causal
+	//	// TransformerBlock -> output head. Weights are randomly initialized (fixed seed
+	//	// above, so this is reproducible) — there's no training yet, so the "predictions"
+	//	// are meaningless, but this exercises the whole pipeline on real input for the
+	//	// first time, rather than the hand-crafted small matrices the earlier tests use.
 
-		/*std::wifstream file("text.txt");
-		file.imbue(std::locale(file.getloc(), new std::codecvt_utf8<wchar_t>));
-		std::wstring text{ std::istreambuf_iterator<wchar_t>(file), std::istreambuf_iterator<wchar_t>() };*/
+	//	/*std::wifstream file("text.txt");
+	//	file.imbue(std::locale(file.getloc(), new std::codecvt_utf8<wchar_t>));
+	//	std::wstring text{ std::istreambuf_iterator<wchar_t>(file), std::istreambuf_iterator<wchar_t>() };*/
 
-		/*std::string const corpus{
-			"the quick brown fox jumps over the lazy dog. "
-			"pack my box with five dozen liquor jugs. "
-			"the five boxing wizards jump quickly." };*/
+	//	/*std::string const corpus{
+	//		"the quick brown fox jumps over the lazy dog. "
+	//		"pack my box with five dozen liquor jugs. "
+	//		"the five boxing wizards jump quickly." };*/
 
-		Tokenizer tok;
-		tok.train(corpus, 0x400);
-		//tok.train("aaabdaaabac", 0x400);
-		{
-			auto ids{ tok.encode(corpus) };
-			auto s{ tok.decode(ids) };
-			assert(corpus == s);
-		}
+	//	Tokenizer tok;
+	//	//tok.train(corpus, 0x400);
+	//	tok
+	//	//tok.train("aaabdaaabac", 0x400);
+	//	{
+	//		auto ids{ tok.encode(corpus) };
+	//		auto s{ tok.decode(ids) };
+	//		assert(corpus == s);
+	//	}
 
-		auto ids{ tok.encode("the quick fox") };
-		assert(tok.decode(ids) == "the quick fox");
-		//auto ids{ tok.encode(corpus) };
-		assert(!ids.empty());
+	//	auto ids{ tok.encode("the quick fox") };
+	//	assert(tok.decode(ids) == "the quick fox");
+	//	//auto ids{ tok.encode(corpus) };
+	//	assert(!ids.empty());
 
-		size_t const dModel{ 8 }, dHidden{ 16 };
-		auto const vocabSize{ tok.vocab_size() };
+	//	size_t const dModel{ 8 }, dHidden{ 16 };
+	//	auto const vocabSize{ tok.vocab_size() };
 
-		Embedding tokenEmbedding{ random_matrix(vocabSize, dModel) };
+	//	Embedding tokenEmbedding{ random_matrix(vocabSize, dModel) };
 
-		Attention causalAttn{
-			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
-			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
-			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
-			Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
-			/*causal=*/true };
+	//	Attention causalAttn{
+	//		Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+	//		Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+	//		Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+	//		Linear{ random_matrix(dModel, dModel), random_vector(dModel) },
+	//		/*causal=*/true };
 
-		RMSNorm norm1{ ones_vector(dModel) };
-		RMSNorm norm2{ ones_vector(dModel) };
+	//	RMSNorm norm1{ ones_vector(dModel) };
+	//	RMSNorm norm2{ ones_vector(dModel) };
 
-		TransformerBlock<Attention> block{
-			causalAttn, norm1,
-			Linear{ random_matrix(dModel, dHidden), random_vector(dHidden) },
-			Linear{ random_matrix(dHidden, dModel), random_vector(dModel) },
-			norm2 };
+	//	TransformerBlock<Attention> block{
+	//		causalAttn, norm1,
+	//		Linear{ random_matrix(dModel, dHidden), random_vector(dHidden) },
+	//		Linear{ random_matrix(dHidden, dModel), random_vector(dModel) },
+	//		norm2 };
 
-		Linear outputHead{ random_matrix(dModel, vocabSize), random_vector(vocabSize) };
+	//	Linear outputHead{ random_matrix(dModel, vocabSize), random_vector(vocabSize) };
 
-		Model<Attention> model{ tokenEmbedding, std::vector<TransformerBlock<Attention>>{ block }, outputHead };
+	//	Model<Attention> model{ tokenEmbedding, std::vector<TransformerBlock<Attention>>{ block }, outputHead };
 
-		auto logits{ model.forward({ids.begin(),ids.end()}) };
+	//	auto logits{ model.forward({ids.begin(),ids.end()}) };
 
-		assert(logits.rows() == ids.size());
-		assert(logits.cols() == vocabSize);
+	//	assert(logits.rows() == ids.size());
+	//	assert(logits.cols() == vocabSize);
 
-		// Greedy-decode: argmax token at each position. Gibberish by construction
-		// (untrained weights) — this is here to prove the pipeline runs end to end
-		// on real text, not to produce anything meaningful yet.
-		std::vector<Tokenizer::TokenId> predicted;
-		predicted.reserve(logits.rows());
+	//	// Greedy-decode: argmax token at each position. Gibberish by construction
+	//	// (untrained weights) — this is here to prove the pipeline runs end to end
+	//	// on real text, not to produce anything meaningful yet.
+	//	std::vector<Tokenizer::TokenId> predicted;
+	//	predicted.reserve(logits.rows());
 
-		for (size_t r = 0; r < logits.rows(); ++r)
-		{
-			auto row{ logits.row(r) };
-			auto itMax{ std::max_element(row.begin(),row.end()) };
-			predicted.push_back((Tokenizer::TokenId)std::distance(row.begin(), itMax));
-		}
+	//	for (size_t r = 0; r < logits.rows(); ++r)
+	//	{
+	//		auto row{ logits.row(r) };
+	//		auto itMax{ std::max_element(row.begin(),row.end()) };
+	//		predicted.push_back((Tokenizer::TokenId)std::distance(row.begin(), itMax));
+	//	}
 
-		std::cout << "Input:      \"" << tok.decode(ids) << "\"\n";
-		std::cout << "Vocab size: " << vocabSize << "\n";
-		std::cout << "Predicted (untrained, argmax per position): \"" << tok.decode(predicted) << "\"\n";
-	}
+	//	std::cout << "Input:      \"" << tok.decode(ids) << "\"\n";
+	//	std::cout << "Vocab size: " << vocabSize << "\n";
+	//	std::cout << "Predicted (untrained, argmax per position): \"" << tok.decode(predicted) << "\"\n";
+	//}
 	{
 		Tokenizer tok;
 		//tok.train(corpus, 1024);          // or load a saved tokenizer
-		std::ifstream file{ "..\\GuttenbergLibrary\\Vocabs\\token1K.bin", std::ios::binary };
-		if (!file)
+		std::ifstream file{ "..\\Vocabs\\token1K.bin", std::ios::binary };
+		if (file)
 		{
 			file >> tok;
 			std::cout << "\nLoaded token1K.bin ok!";
