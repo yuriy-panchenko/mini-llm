@@ -3,6 +3,7 @@
 #include <random>
 #include <iostream>
 #include <fstream>
+#include <iomanip>
 #include <codecvt>
 #include "..\mini_llm_core\core.h"
 
@@ -829,9 +830,7 @@ int main()
 			Matrix logits = model.forward(x);
 			scalar loss = cross_entropy(logits, y);
 			if (step % 10 == 0)
-			{
-				std::cout << "step " << step << "  loss " << loss;// << '\n';
-			}
+				std::cout << "step " << step << " loss " << std::fixed << std::setprecision(3) << loss;
 
 			model.zero_grad();
 			auto dLogits = cross_entropy_backward(logits, y);

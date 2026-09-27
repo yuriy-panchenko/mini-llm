@@ -9,6 +9,8 @@ namespace llm
 		, m_dGamma{ gamma.size() }
 		, m_Eps{ eps }
 		, m_LastInput{ 0, gamma.size() }
+		, m_mGamma{ gamma.size() }
+		, m_vGamma{ gamma.size() }
 	{}
 
 	Matrix RMSNorm::forward(Matrix const& input)
@@ -70,11 +72,26 @@ namespace llm
 
 	void RMSNorm::update(scalar lr)
 	{
-		std::transform(m_Gamma.begin(), m_Gamma.end(), m_dGamma.begin(), m_Gamma.begin(), [lr](scalar a, scalar b)->scalar {return a - lr * b; });
+		constexpr scalar beta1{ 0.9f }, beta2{ 0.999f }, eps{ 1e-8f };
+		++m_T;
+		auto const bc1{ 1 - std::pow(beta1, static_cast<scalar>(m_T)) };
+		auto const bc2{ 1 - std::pow(beta2, static_cast<scalar>(m_T)) };
+
+		for (size_t c = 0; c < m_Gamma.size(); ++c)
+		{
+			m_mGamma[c] = beta1 * m_mGamma[c] + (1 - beta1) * m_dGamma[c];
+			m_vGamma[c] = beta2 * m_vGamma[c] + (1 - beta2) * m_dGamma[c] * m_dGamma[c];
+
+			auto const mHat{ m_mGamma[c] / bc1 };
+			auto const vHat{ m_vGamma[c] / bc2 };
+
+			m_Gamma[c] -= lr * mHat / (std::sqrt(vHat) + eps);
+		}
 	}
 
 	void RMSNorm::zero_grad()
 	{
 		m_dGamma.fill({});
+		// m_mGamma/m_vGamma intentionally NOT cleared -- persist across steps
 	}
 }
