@@ -85,41 +85,26 @@ namespace llm
 	{
 		std::vector<TokenId> ret;
 		ret.reserve(tokens.size());
-		unsigned char bit{ 0x00 };
-		constexpr unsigned char mask{ 0x07 }, pattern{ 0x05 };
-		Pair wnd{ {}, tokens.front() };
-		
-		for (size_t i = 1; i < tokens.size(); ++i)
-		{
-			wnd.first = wnd.second;
-			wnd.second = tokens[i];
-			bit <<= 1;
-			if (wnd == pair)
+
+		TokenId const id{ TokenId(newId) };	//	constructed once, reused for every merged position
+		bool skipLeftDec{ false };		//	true when the previous match's right-side lookahead already recorded this boundary
+
+		for (size_t i = 0; i < tokens.size(); ++i)
+			if (i + 1 < tokens.size() && tokens[i] == pair.first && tokens[i + 1] == pair.second)
 			{
-				bit |= 0x01;
+				if (i > 0 && !skipLeftDec)
+					decs.push_back({ tokens[i - 1], tokens[i] });
+
+				bool const adjacentNext{ i + 3 < tokens.size() && tokens[i + 2] == pair.first && tokens[i + 3] == pair.second };
+				if (i + 2 < tokens.size())
+					decs.push_back({ tokens[i + 1], tokens[i + 2] });
+				skipLeftDec = adjacentNext;
+
 				tokenIdxs.push_back(ret.size());
-				ret.push_back(TokenId(newId));
+				ret.push_back(id);
 				++i;
 			}
 			else ret.push_back(tokens[i]);
-			if((bit & mask)==pattern)
-				decs.push_back({ tokens[i - 1], tokens[i] });
-
-		}
-		/*for (size_t i = 0; i < tokens.size(); ++i)
-		{
-			bit <<= 1;
-			bit |= isMatchStart[i];
-			bit &= mask;
-			if (bit == pattern)
-				decs.push_back({ tokens[i - 1], tokens[i] });
-		}*/
-
-		// One decision per original boundary index, so an index adjacent to two
-		// back-to-back matches (e.g. "ABAB") isn't decremented twice.
-		/*for (size_t i = 0; i + 1 < tokens.size(); ++i)
-			if (!isMatchStart[i] && ((i > 0 && isMatchStart[i - 1]) || isMatchStart[i + 1]))
-				decs.push_back({ tokens[i], tokens[i + 1] });*/
 
 		return ret;
 	}
@@ -207,8 +192,11 @@ namespace llm
 		m_IdToBytes.push_back(m_IdToBytes[pair.first] + m_IdToBytes[pair.second]);
 		m_MergeRank[pair] = m_Merges.size();
 		m_Merges.push_back(pair);
-		std::vector<size_t> idx;
-		std::vector<Pair> decs;
+
+		auto& idx{ m_ScratchIdx };
+		auto& decs{ m_ScratchDecs };
+		idx.clear();
+		decs.clear();
 		idx.reserve(occurance);
 		decs.reserve(2 * occurance);
 		m_Tokens = merge(m_Tokens, pair, newID, idx, decs);
@@ -225,20 +213,23 @@ namespace llm
 		for (auto& p : decs)
 			decrease(p);
 
-		// m_Tokens is already post-merge here, so a neighbor position that was
-		// itself just merged (back-to-back occurrences, e.g. "ABAB" -> [id,id])
-		// must not be double-counted from both sides.
-		std::unordered_set<size_t> mergedAt(idx.begin(), idx.end());
+		// Dense marker instead of unordered_set<size_t>: mergedAt[pos] != 0 means
+		// pos in the post-merge m_Tokens is a freshly-created id this round.
+		auto& mergedAt{ m_ScratchMerged };
+		mergedAt.assign(m_Tokens.size(), 0);
+		for (auto ind : idx)
+			mergedAt[ind] = 1;
+
 		for (auto ind : idx)
 		{
 			if (ind + 1 < m_Tokens.size())	//	have element to the right
 			{
-				if (!mergedAt.contains(ind + 1))
+				if (!mergedAt[ind + 1])
 					++m_Counts[{ id, m_Tokens[ind + 1] }];
 				else
 					++m_Counts[{ id, id }];	//	count the new {id,id} edge exactly once
 			}
-			if (ind && !mergedAt.contains(ind - 1))//	have element to the left
+			if (ind && !mergedAt[ind - 1])	//	have element to the left
 				++m_Counts[{m_Tokens[ind - 1], id}];
 		}
 

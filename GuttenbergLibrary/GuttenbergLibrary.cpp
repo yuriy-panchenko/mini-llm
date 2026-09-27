@@ -27,7 +27,6 @@ std::string read_file(fs::path const& filename)
 	if (file)
 		return { istreambuf_iterator<char>{file},istreambuf_iterator<char>{} };
 	else throw std::runtime_error("Cannot open file: " + filename.string());
-
 }
 
 string read_all_files(fs::path const& root)
@@ -68,7 +67,7 @@ string read_all_files(fs::path const& root)
 
 void save_as(fs::path fn)
 {
-	cout << "\nSaving dictionary " << fn.filename() << ".....";
+	cout << "\n\nSaving dictionary " << fn.filename() << ".....";
 	std::ofstream file{ fn, ios::binary };
 	if (file)
 	{

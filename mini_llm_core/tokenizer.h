@@ -77,5 +77,9 @@ namespace llm
 
 		std::unordered_map<Pair, size_t, PairHash> m_Counts;
 		std::vector<Tokenizer::TokenId> m_Tokens;
+
+		std::vector<size_t> m_ScratchIdx;
+		std::vector<Pair> m_ScratchDecs;
+		std::vector<char> m_ScratchMerged;
 	};
 }
