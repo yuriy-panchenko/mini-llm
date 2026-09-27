@@ -12,8 +12,8 @@ namespace llm
 		for (auto& tok : ret)
 			tok = static_cast<TokenId>(*itText++);
 		return ret;*/
-		std::vector<unsigned char> v{text.begin(),text.end()};
-		return {v.begin(),v.end()};
+		std::vector<unsigned char> v{ text.begin(),text.end() };
+		return { v.begin(),v.end() };
 	}
 
 	void Tokenizer::train(String const& corpus, size_t vocabSize)
@@ -80,7 +80,8 @@ namespace llm
 		return ret;
 	}
 
-	std::vector<Tokenizer::TokenId> Tokenizer::merge(std::vector<TokenId> const& tokens, Pair pair, size_t newId, std::vector<size_t>& tokenIdxs)
+	std::vector<Tokenizer::TokenId> Tokenizer::merge(std::vector<TokenId> const& tokens, Pair pair, size_t newId, std::vector<size_t>& tokenIdxs,
+		std::vector<Pair>& decs)
 	{
 		std::vector<TokenId> ret;
 		ret.reserve(tokens.size());
@@ -88,6 +89,11 @@ namespace llm
 		for (size_t i = 0; i < tokens.size(); ++i)
 			if (i + 1 < tokens.size() && tokens[i] == pair.first && tokens[i + 1] == pair.second)
 			{
+				if (i + 2 < tokens.size())
+					decs.push_back({ tokens[i + 1], tokens[i + 2] });
+				if (i)
+					decs.push_back({ tokens[i - 1], tokens[i] });
+
 				tokenIdxs.push_back(ret.size());
 				ret.push_back(TokenId(newId));
 				++i;
@@ -180,29 +186,30 @@ namespace llm
 		m_MergeRank[pair] = m_Merges.size();
 		m_Merges.push_back(pair);
 		std::vector<size_t> idx;
+		std::vector<Pair> decs;
 		idx.reserve(occurance);
-		m_Tokens = merge(m_Tokens, pair, newID, idx);
+		m_Tokens = merge(m_Tokens, pair, newID, idx, decs);
 
 		auto const id{ TokenId(newID) };
 		auto decrease = [this](Pair p)
 			{
+				assert(m_Counts.contains(p));
 				--m_Counts[p];
 				if (!m_Counts[p])
 					m_Counts.erase(p);
 			};
+
+		for (auto& p : decs)
+			decrease(p);
+
 		for (auto ind : idx)
 		{
 			if (ind + 1 < m_Tokens.size())	//	have element to the right
-			{
-				decrease({ pair.second, m_Tokens[ind + 1] });
 				++m_Counts[{ id, m_Tokens[ind + 1] }];
-			}
 			if (ind)//	have element to the left
-			{
-				decrease({ m_Tokens[ind - 1], pair.first });
 				++m_Counts[{m_Tokens[ind - 1], id}];
-			}
 		}
+
 		m_Counts.erase(pair);
 
 		auto count_all = [this]()->size_t

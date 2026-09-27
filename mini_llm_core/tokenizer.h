@@ -65,7 +65,7 @@ namespace llm
 		};
 
 		static std::vector<TokenId> merge(std::vector<TokenId> const& tokens, Pair pair, size_t newId);
-		static std::vector<TokenId> merge(std::vector<TokenId> const& tokens, Pair pair, size_t newId, std::vector<size_t>& tokenIdxs);
+		static std::vector<TokenId> merge(std::vector<TokenId> const& tokens, Pair pair, size_t newId, std::vector<size_t>& tokenIdxs, std::vector<Pair>& decs);
 		void Serialize(std::ofstream&) override;
 		void Serialize(std::ifstream&) override;
 
