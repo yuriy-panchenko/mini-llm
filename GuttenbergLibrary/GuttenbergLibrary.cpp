@@ -55,7 +55,7 @@ std::string GetGenome(std::ifstream& s)
 		default:
 			if (found_start)
 				return ret;
-			else if(ret.size() < 256ull)
+			else if (ret.size() < 256ull)
 				ret.clear();
 			break;
 		}
@@ -116,13 +116,14 @@ void save_as(fs::path fn)
 int main()
 {
 	std::string corpus;
-	corpus= read_all_files(source_root) ;
+	corpus = read_all_files(source_root);
 	//std::ifstream fs{ std::string{source_root} + "2214.txt" };
 	//if (fs)
 	//	corpus = GetGenome(fs);
 
 	//tok.train(read_all_files(file_root), vocab_size);
 	gTok.reset(vocab_size);
+	corpus = llm::normalize_whitespace(corpus);
 	gTok.tokenize(corpus);
 
 	size_t milestone{ 0x200ull }, max_len{ 1ull }, best_count;
@@ -141,11 +142,11 @@ int main()
 		cmb_text = gTok.text(best);
 		max_len = std::max(max_len, cmb_text.length());
 		std::cout
-			<< "\ntoken: " << tok_size
-			<< ", lib: " << gTok.vocab_size()
-			<< ", max_len: " << max_len
+			<< '\n' << tok_size
+			<< ", lib " << gTok.vocab_size()
+			<< ", max " << max_len
 			<< '\t' << fixed << setprecision(3) << duration_cast<milliseconds>(tpEnd - tpStart).count() / 1000.
-			<< '\t' << best_count << "\t\"" << cmb_text << "\""
+			<< '\t' << best_count << "\t\"" << cmb_text << '\"'
 			;
 
 		if (gTok.vocab_size() == milestone)

@@ -13,8 +13,13 @@ namespace
 {
 	// Fixed seed: same "gibberish" every run, since there's no training yet and a
 	// reproducible demo is more useful than a different random mess each time.
+#ifdef _DEBUG
 	std::mt19937 g_Rng{ 1234 };
-	std::uniform_real_distribution<scalar> g_Dist{ -0.5f, 0.5f };
+#else
+	std::mt19937 g_Rng{};
+#endif // _DEBUG
+
+	std::normal_distribution<scalar> g_Dist{ 0.f, 1.f };
 
 	Matrix random_matrix(size_t rows, size_t cols)
 	{
@@ -657,6 +662,7 @@ int main()
 
 	std::ifstream file("text.txt");
 	std::string corpus{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
+	corpus = llm::normalize_whitespace(corpus);
 
 	//std::cout << corpus << std::endl;
 
@@ -758,6 +764,7 @@ int main()
 		size_t const n_heads = 4;
 		size_t const vocab = tok.vocab_size();
 		size_t const ctx = 64;
+		scalar lr = .001f;
 
 		size_t const d_ff{ d_model << 2 };   // classic 4× expansion
 
@@ -791,28 +798,29 @@ int main()
 		// Same-input, same-model before/after sample -- unlike the untrained demo
 		// above (different tokenizer, different single-head model), this is a fair
 		// comparison because it's the exact model about to be trained below.
-		auto const sampleIds{ tok.encode("the quick fox") };
-		auto greedy_decode = [&](Model<MultiHeadAttention>& m) {
-			auto logits{ m.forward({ sampleIds.begin(), sampleIds.end() }) };
-			std::vector<Tokenizer::TokenId> predicted;
-			predicted.reserve(logits.rows());
-			for (size_t r = 0; r < logits.rows(); ++r)
+		//auto const sampleIds{ tok.encode("the quick fox") };
+		auto const sampleIds{ tok.encode("and the medium on which they may be stored,") };
+		auto greedy_decode = [&](Model<MultiHeadAttention>& m)
 			{
-				auto row{ logits.row(r) };
-				auto itMax{ std::max_element(row.begin(), row.end()) };
-				predicted.push_back((Tokenizer::TokenId)std::distance(row.begin(), itMax));
-			}
-			return tok.decode(predicted);
+				auto logits{ m.forward({ sampleIds.begin(), sampleIds.end() }) };
+				std::vector<Tokenizer::TokenId> predicted;
+				predicted.reserve(logits.rows());
+				for (size_t r = 0; r < logits.rows(); ++r)
+				{
+					auto row{ logits.row(r) };
+					auto itMax{ std::max_element(row.begin(), row.end()) };
+					predicted.push_back((Tokenizer::TokenId)std::distance(row.begin(), itMax));
+				}
+				return tok.decode(predicted);
 			};
 
 		std::cout << "\nSample input: \"" << tok.decode({ sampleIds.begin(), sampleIds.end() }) << "\"\n";
-		std::cout << "Predicted (before training): \"" << greedy_decode(model) << "\"\n";
+		//std::cout << "Predicted (before training): \"" << greedy_decode(model) << "\"\n";
 
 		auto all_ids = tok.encode(corpus);
 		assert(all_ids.size() > ctx + 1);   // guards the subtraction below
 
-		scalar lr = 3e-4f;
-		for (int step = 0; step < 5000; ++step)
+		for (int step = 0; step < 15'000; ++step)
 		{
 			size_t start = g_Rng() % (all_ids.size() - ctx - 1);
 			std::vector<size_t> x(all_ids.begin() + start, all_ids.begin() + start + ctx);
@@ -821,12 +829,16 @@ int main()
 			Matrix logits = model.forward(x);
 			scalar loss = cross_entropy(logits, y);
 			if (step % 10 == 0)
-				std::cout << "step " << step << "  loss " << loss << '\n';
+			{
+				std::cout << "step " << step << "  loss " << loss;// << '\n';
+			}
 
 			model.zero_grad();
 			auto dLogits = cross_entropy_backward(logits, y);
 			model.backward(dLogits);
 			model.update(lr);
+			if (step % 10 == 0)
+				std::cout << "\"" << greedy_decode(model) << "\"\n";
 		}
 
 		std::cout << "\nPredicted (after training):  \"" << greedy_decode(model) << "\"\n";

@@ -82,4 +82,38 @@ namespace llm
 		std::vector<Pair> m_ScratchDecs;
 		std::vector<char> m_ScratchMerged;
 	};
+
+	// Strips CR, collapses a lone '\n' (mid-paragraph line wrap) to a space,
+// collapses a run of 2+ '\n's (real paragraph break) down to one '\n'.
+	inline std::string normalize_whitespace(std::string const& text)
+	{
+		std::string out;
+		out.reserve(text.size());
+
+		size_t runLen{ 0 };   // length of the '\n' run currently being counted
+
+		for (char ch : text)
+		{
+			if (ch == '\r')
+				continue;
+
+			if (ch == '\n')
+			{
+				++runLen;
+				continue;
+			}
+
+			if (runLen > 0)
+			{
+				out.push_back(runLen > 1 ? '\n' : ' ');
+				runLen = 0;
+			}
+			out.push_back(ch);
+		}
+
+		if (runLen > 0)
+			out.push_back(runLen > 1 ? '\n' : ' ');
+
+		return out;
+	}
 }
