@@ -4,18 +4,21 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <string>
 #include <sstream>
 #include <chrono>
 #include "..\mini_llm_core\tokenizer.h"
 #include "..\mini_llm_core\classmap.h"
 
-//constexpr auto source_root{ "..\\D184MB\\" };
+constexpr auto source_root{ "..\\D184MB\\" };
 //constexpr auto source_root{ "..\\D1GB\\" };
-constexpr auto source_root{ "..\\D1.7GB\\" };
+//constexpr auto source_root{ "..\\D1.7GB\\" };
 //constexpr auto source_root{ "..\\D1GB\\Genome\\" };
 constexpr auto destin_root{ "..\\Vocabs\\" };
 //constexpr auto filename{ "vocab.tok" };
-constexpr size_t vocab_size{ 0x8000 };
+
+//constexpr size_t vocab_size{ 0x8000 };
+constexpr size_t vocab_size{ 0xFFF0 };
 
 using namespace std;
 using namespace llm;
@@ -70,16 +73,54 @@ void save_as(fs::path fn)
 	cout << endl;
 }
 
+
+// Replaces every occurrence of `from` with `to`, in place.
+// Handles overlapping/empty-replacement cases safely by advancing past each replacement.
+// Usage:
+// replace_all(text, "Bot: ", "");      // remove
+// replace_all(text, "Bot: ", "A: ");   // replace
+void replace_all(std::string& s, const std::string& from, const std::string& to)
+{
+	if (from.empty()) return;
+
+	size_t pos = 0;
+	while ((pos = s.find(from, pos)) != std::string::npos)
+	{
+		s.replace(pos, from.size(), to);
+		pos += to.size();   // skip past what we just inserted
+	}
+}
+
+std::string replace_all_fast(const std::string& s, const std::string& from, const std::string& to)
+{
+	if (from.empty()) return s;
+
+	std::string out;
+	out.reserve(s.size());
+
+	size_t pos = 0, hit;
+	while ((hit = s.find(from, pos)) != std::string::npos)
+	{
+		out.append(s, pos, hit - pos);   // copy the untouched stretch
+		out += to;
+		pos = hit + from.size();
+	}
+	out.append(s, pos, std::string::npos);  // tail
+	return out;
+}
+
 int main()
 {
 	std::string corpus;
 	//corpus = llm::read_all_files(source_root);
+	//corpus = llm::normalize_whitespace(corpus);
 	//std::ifstream fs{ std::string{source_root} + "2214.txt" };
 	corpus = llm::read_file("..\\mini-llm\\conversations.txt");
+	//replace_all(corpus, "User: ", "");
+	//replace_all(corpus, "Bot: ", "");
 
 	//tok.train(read_all_files(file_root), vocab_size);
 	gTok.reset(vocab_size);
-	corpus = llm::normalize_whitespace(corpus);
 	gTok.tokenize(corpus);
 
 	size_t milestone{ 0x200ull }, max_len{ 1ull }, best_count;
@@ -112,5 +153,5 @@ int main()
 		}
 	}
 
-	save_as(std::string{ destin_root } + "token32K.bin");
+	save_as(std::string{ destin_root } + "tokens.bin");
 }

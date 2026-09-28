@@ -663,7 +663,8 @@ int main()
 
 	std::ifstream file("conversations.txt");
 	//auto const corpus{ llm::normalize_whitespace(llm::read_all_files("..\\D184MB\\")) };
-	auto const corpus{ llm::normalize_whitespace(std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() }) };
+	//auto const corpus{ llm::normalize_whitespace(std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() }) };
+	auto const corpus{ std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() } };
 	std::cout << "Corpus has " << corpus.length() << " chars" << std::endl;
 
 	//{
@@ -747,16 +748,19 @@ int main()
 	{
 		Tokenizer tok;
 		//tok.train(corpus, 1024);          // or load a saved tokenizer
-		std::ifstream file{ "..\\Vocabs\\token512.bin", std::ios::binary };
-		if (file)
 		{
-			file >> tok;
-			std::cout << "\nDictionary token1K";
-		}
-		else
-		{
-			tok.train(corpus, 1024);          // or load a saved tokenizer
-			std::cout << "\nLearned from corpus " << corpus.size() << " chars";
+			std::string const fn{ "Hello\\token1K.bin" };
+			std::ifstream file{ "..\\Vocabs\\" + fn, std::ios::binary };
+			if (file)
+			{
+				file >> tok;
+				std::cout << "\nDictionary " + fn;
+			}
+			else
+			{
+				tok.train(corpus, 1024);          // or load a saved tokenizer
+				std::cout << "\nLearned from corpus " << corpus.size() << " chars";
+			}
 		}
 
 		size_t const d_model = 64;
@@ -770,6 +774,7 @@ int main()
 
 		std::vector<TransformerBlock<MultiHeadAttention>> body;
 		body.reserve(n_layers);
+
 		for (size_t i = 0; i < n_layers; ++i)
 		{
 			// Fresh weights per layer -- constructing this outside the loop and
@@ -790,24 +795,50 @@ int main()
 				RMSNorm{ Vector{d_model, 1.f} });
 		}
 
-		Model<MultiHeadAttention> model{
-	Embedding{ Matrix{vocab, d_model}.xavier(g_Rng, g_Dist) },
-	std::move(body),
-	Linear{ Matrix{d_model, vocab}.xavier(g_Rng, g_Dist), Vector{vocab} } };
+		Model model{ Embedding{ Matrix{vocab, d_model}.xavier(g_Rng, g_Dist) },
+			std::move(body),Linear{ Matrix{d_model, vocab}.xavier(g_Rng, g_Dist), Vector{vocab} } };
+
+		auto generate = [&](std::string const& prompt, size_t maxNewTokens)
+			{
+				std::vector<size_t> window;
+				for (auto id : tok.encode(prompt))
+					window.push_back(id);
+
+				std::string ret;
+				for (size_t i = 0; i < maxNewTokens; ++i)
+				{
+					std::vector<size_t> in(window.size() > ctx ? window.end() - ctx : window.begin(), window.end());
+					auto logits{ model.forward(in) };
+					auto row{ logits.row(logits.rows() - 1) };
+					auto next{ static_cast<size_t>(std::distance(row.begin(), std::max_element(row.begin(), row.end()))) };
+					window.push_back(next);
+					ret += tok.decode({ static_cast<Tokenizer::TokenId>(next) });
+
+					if (auto p{ ret.find("User:") }; p != std::string::npos)
+					{
+						ret.resize(p);   // stop before the model starts writing the user's next turn
+						break;
+					}
+				}
+				return ret;
+			};
 
 		// Same-input, same-model before/after sample -- unlike the untrained demo
 		// above (different tokenizer, different single-head model), this is a fair
 		// comparison because it's the exact model about to be trained below.
 		//auto const sampleIds{ tok.encode("the quick fox") };
-		auto const sampleIds{ tok.encode("Hi! How you doing today?") };
-		auto greedy_decode = [&](Model<MultiHeadAttention>& m)
+		auto const sampleIds{ tok.encode("User: Hi! How are you?\nBot: ") };
+
+		auto greedy_decode = [&](Model<MultiHeadAttention>& m)->llm::Tokenizer::String
 			{
 				auto logits{ m.forward({ sampleIds.begin(), sampleIds.end() }) };
+
 				std::vector<Tokenizer::TokenId> predicted;
 				predicted.reserve(logits.rows());
 				for (size_t r = 0; r < logits.rows(); ++r)
 				{
 					auto row{ logits.row(r) };
+
 					auto itMax{ std::max_element(row.begin(), row.end()) };
 					predicted.push_back((Tokenizer::TokenId)std::distance(row.begin(), itMax));
 				}
@@ -835,11 +866,14 @@ int main()
 			auto dLogits = cross_entropy_backward(logits, y);
 			model.backward(dLogits);
 			model.update(lr);
-			if (step % 10 == 0)
+			if (step % 500 == 0)
+				std::cout << "\t(*): \"" << generate("User: Hi! How are you?\nBot:", 60) << "\"\n";
+			else if (step % 10 == 0)
 				std::cout << "\t\"" << greedy_decode(model) << "\"\n";
 		}
 
-		std::cout << "\nPredicted (after training):  \"" << greedy_decode(model) << "\"\n";
+		std::cout << "\t(*): \"" << generate("User: Hi! How are you?\nBot:", 60) << "\"\n";
+		//std::cout << "\nPredicted (after training):  \"" << greedy_decode(model) << "\"\n";
 	}
 
 	{
