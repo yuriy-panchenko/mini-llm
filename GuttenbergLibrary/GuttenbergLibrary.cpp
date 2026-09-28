@@ -7,18 +7,18 @@
 #include <string>
 #include <sstream>
 #include <chrono>
+#include <iomanip>
 #include "..\mini_llm_core\tokenizer.h"
 #include "..\mini_llm_core\classmap.h"
 
-constexpr auto source_root{ "..\\D184MB\\" };
+//constexpr auto source_root{ "..\\D184MB\\" };
 //constexpr auto source_root{ "..\\D1GB\\" };
 //constexpr auto source_root{ "..\\D1.7GB\\" };
 //constexpr auto source_root{ "..\\D1GB\\Genome\\" };
-constexpr auto destin_root{ "..\\Vocabs\\" };
-//constexpr auto filename{ "vocab.tok" };
+//constexpr auto destin_root{ "..\\Vocabs\\" };
 
 //constexpr size_t vocab_size{ 0x8000 };
-constexpr size_t vocab_size{ 0xFFF0 };
+constexpr size_t max_vocab_size{ 0xFFF0 };
 
 using namespace std;
 using namespace llm;
@@ -109,25 +109,188 @@ std::string replace_all_fast(const std::string& s, const std::string& from, cons
 	return out;
 }
 
-int main()
+int main(int argc, char const* argv[])
 {
-	std::string corpus;
-	//corpus = llm::read_all_files(source_root);
-	//corpus = llm::normalize_whitespace(corpus);
-	//std::ifstream fs{ std::string{source_root} + "2214.txt" };
-	corpus = llm::read_file("..\\mini-llm\\conversations.txt");
-	//replace_all(corpus, "User: ", "");
-	//replace_all(corpus, "Bot: ", "");
+	// Default values
+	fs::path src_path;
+	fs::path dst_path = fs::current_path();   // current by default
+	bool do_norm = false;
+	bool do_dna = false;
+	bool do_big = false;
+	size_t vocab_size = max_vocab_size;       // default max
 
-	//tok.train(read_all_files(file_root), vocab_size);
+	// ------------------------------------------------------------------
+	// Command-line parsing
+	// ------------------------------------------------------------------
+	if (argc == 1)
+	{
+		cout << "gutlib src [dst] [flags]\n"
+			<< "\tsrc\t\t- path to file or folder with .txt files\n"
+			<< "\tdst\t\t- destination folder path (current by default)\n"
+			<< "\t/norm\t\t- normalize whitespaces\n"
+			<< "\t/dna\t\t- open file as Genome file\n"
+			<< "\t/big\t\t- save combined and cleaned corpus to corpus.txt file\n"
+			<< "\t/size=1024\t- max vocabulary size\n"
+			<< endl;
+		return EXIT_SUCCESS;
+	}
+
+	// Collect positional arguments and flags
+	vector<string> positional;
+	for (int i = 1; i < argc; ++i)
+	{
+		string arg = argv[i];
+
+		// Flags (case-insensitive comparison for convenience)
+		if (arg == "/norm" || arg == "/NORM" || arg == "-norm")
+		{
+			do_norm = true;
+		}
+		else if (arg == "/dna" || arg == "/DNA" || arg == "-dna")
+		{
+			do_dna = true;
+		}
+		else if (arg == "/big" || arg == "/BIG" || arg == "-big")
+		{
+			do_big = true;
+		}
+		else if (arg.rfind("/size=", 0) == 0 || arg.rfind("/SIZE=", 0) == 0 || arg.rfind("-size=", 0) == 0)
+		{
+			// Parse /size=N or -size=N
+			string value = arg.substr(arg.find('=') + 1);
+			try
+			{
+				size_t parsed = stoull(value);
+				if (parsed == 0 || parsed > max_vocab_size)
+				{
+					cerr << "Error: vocabulary size must be between 1 and " << max_vocab_size << endl;
+					return EXIT_FAILURE;
+				}
+				vocab_size = parsed;
+			}
+			catch (...)
+			{
+				cerr << "Error: invalid vocabulary size value: " << value << endl;
+				return EXIT_FAILURE;
+			}
+		}
+		else if (arg[0] == '/' || arg[0] == '-')
+		{
+			cerr << "Unknown flag: " << arg << endl;
+			return EXIT_FAILURE;
+		}
+		else
+		{
+			// Positional argument
+			positional.push_back(arg);
+		}
+	}
+
+	// Assign positional arguments
+	if (positional.empty())
+	{
+		cerr << "Error: source path (src) is required.\n";
+		return EXIT_FAILURE;
+	}
+
+	src_path = positional[0];
+	if (positional.size() >= 2)
+		dst_path = positional[1];
+
+	// Validate paths
+	if (!fs::exists(src_path))
+	{
+		cerr << "Error: source path does not exist: " << src_path << endl;
+		return EXIT_FAILURE;
+	}
+
+	if (!fs::exists(dst_path))
+	{
+		cerr << "Destination folder does not exist. Creating: " << dst_path << endl;
+		fs::create_directories(dst_path);
+	}
+
+	// ------------------------------------------------------------------
+	// Info display
+	// ------------------------------------------------------------------
+	cout << "=== Gutenberg Library Tokenizer ===\n"
+		<< "Source      : " << src_path << "\n"
+		<< "Destination : " << dst_path << "\n"
+		<< "Normalize   : " << (do_norm ? "yes" : "no") << "\n"
+		<< "DNA mode    : " << (do_dna ? "yes" : "no") << "\n"
+		<< "Save corpus : " << (do_big ? "yes" : "no") << "\n"
+		<< "Vocab size  : " << vocab_size << " (0x" << hex << vocab_size << dec << ")\n"
+		<< "===================================\n" << endl;
+
+	// ------------------------------------------------------------------
+	// Load corpus
+	// ------------------------------------------------------------------
+	std::string corpus;
+
+	if (do_dna)
+	{
+		// Treat as single Genome file
+		if (!fs::is_regular_file(src_path))
+		{
+			cerr << "Error: /dna expects a single file, not a directory.\n";
+			return EXIT_FAILURE;
+		}
+		std::ifstream fs{ src_path };
+		if (!fs)
+		{
+			cerr << "Error: cannot open genome file: " << src_path << endl;
+			return EXIT_FAILURE;
+		}
+		corpus = GetGenome(fs);
+		cout << "Genome sequence length: " << corpus.size() << " bases\n";
+	}
+	else
+	{
+		// Normal text mode: file or folder of .txt files
+		if (fs::is_directory(src_path))
+		{
+			corpus = llm::read_all_files(src_path.string());
+		}
+		else
+		{
+			corpus = llm::read_file(src_path.string());
+		}
+	}
+
+	if (do_norm)
+	{
+		corpus = llm::normalize_whitespace(corpus);
+		cout << "Whitespace normalized.\n";
+	}
+
+	if (do_big)
+	{
+		fs::path corpus_file = dst_path / "corpus.txt";
+		std::ofstream out{ corpus_file };
+		if (out)
+		{
+			out << corpus;
+			cout << "Combined corpus saved to: " << corpus_file << "\n";
+		}
+		else
+		{
+			cerr << "Warning: could not write corpus.txt\n";
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Training loop (unchanged)
+	// ------------------------------------------------------------------
 	gTok.reset(vocab_size);
 	gTok.tokenize(corpus);
 
 	size_t milestone{ 0x200ull }, max_len{ 1ull }, best_count;
 	std::string cmb_text;
+	bool just_saved{ false };
 
 	while (gTok.vocab_size() < vocab_size)
 	{
+		just_saved = false;
 		auto const tpStart{ steady_clock::now() };
 		auto const best{ gTok.find_most_used_pair(&best_count) };
 		if (best == Tokenizer::invalid_pair)
@@ -148,10 +311,13 @@ int main()
 
 		if (gTok.vocab_size() == milestone)
 		{
-			save_as(std::string{ destin_root } + "token" + (milestone >= 0x400 ? to_string(milestone / 0x400) + "K" : to_string(milestone)) + ".bin");
+			fs::path save_path = dst_path / ("token" + (milestone >= 0x400 ? to_string(milestone / 0x400) + "K" : to_string(milestone)) + ".bin");
+			save_as(save_path);
 			milestone <<= 1;
+			just_saved = true;
 		}
 	}
 
-	save_as(std::string{ destin_root } + "tokens.bin");
+	if (!just_saved)
+		save_as(dst_path / "tokens.bin");
 }

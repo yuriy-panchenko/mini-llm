@@ -661,6 +661,30 @@ int main()
 	//	assert(tok.decode(ids3) == "xyz!");
 	//}
 
+	/*{
+		std::ifstream file("2207.txt");
+		auto const corpus{ std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() } };
+		Tokenizer tok;
+		//tok.train(corpus, 1024);          // or load a saved tokenizer
+
+		std::string const fn{ "Hello\\tokens.bin" };
+		std::ifstream f{ "..\\Vocabs\\" + fn, std::ios::binary };
+		if (f)
+		{
+			f >> tok;
+			std::cout << "\nDictionary " + fn;
+		}
+		else
+		{
+			tok.train(corpus, 1024);          // or load a saved tokenizer
+			std::cout << "\nLearned from corpus " << corpus.size() << " chars";
+		}
+
+		auto tokens{ tok.encode(corpus) };
+		auto res{ tok.decode(tokens) };
+		assert(res == corpus);
+	}*/
+
 	std::ifstream file("conversations.txt");
 	//auto const corpus{ llm::normalize_whitespace(llm::read_all_files("..\\D184MB\\")) };
 	//auto const corpus{ llm::normalize_whitespace(std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() }) };
@@ -749,7 +773,7 @@ int main()
 		Tokenizer tok;
 		//tok.train(corpus, 1024);          // or load a saved tokenizer
 		{
-			std::string const fn{ "Hello\\token1K.bin" };
+			std::string const fn{ "Hello\\token512.bin" };
 			std::ifstream file{ "..\\Vocabs\\" + fn, std::ios::binary };
 			if (file)
 			{
