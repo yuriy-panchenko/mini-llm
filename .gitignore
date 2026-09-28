@@ -364,3 +364,11 @@ FodyWeavers.xsd
 /D184MB
 /D1.7GB
 /D1GB
+/Vocabs/Hello
+/Vocabs/token16K.bin
+/Vocabs/token1K.bin
+/Vocabs/token2K.bin
+/Vocabs/token32K.bin
+/Vocabs/token4K.bin
+/Vocabs/token512.bin
+/Vocabs/token8K.bin
