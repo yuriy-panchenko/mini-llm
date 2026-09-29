@@ -174,6 +174,15 @@ namespace llm
 			s.write((char const*)&item.first, sizeof Pair);
 			s.write((char const*)&item.second, sizeof size_t);
 		}
+
+		u64 = m_Counts.size();
+		s.write((char const*)&u64, sizeof u64);
+		for (auto const& item : m_Counts)
+			s.write((const char*)&item, sizeof std::unordered_map<Pair, size_t, PairHash>::value_type);
+
+		u64 = m_Tokens.size();
+		s.write((char const*)&u64, sizeof u64);
+		s.write((const char*)m_Tokens.data(), m_Tokens.size() * sizeof TokenId);
 	}
 
 	void Tokenizer::Serialize(std::ifstream& s)
@@ -181,6 +190,8 @@ namespace llm
 		m_IdToBytes.clear();
 		m_MergeRank.clear();
 		m_Merges.clear();
+		m_Counts.clear();
+		m_Tokens.clear();
 
 		unsigned __int64 u64;
 		s.read((char*)&u64, sizeof u64);
@@ -207,6 +218,19 @@ namespace llm
 			s.read((char*)&sz, sizeof size_t);
 			m_MergeRank[p] = sz;
 		}
+
+		s.read((char*)&u64, sizeof u64);
+		m_Counts.reserve(u64);
+		std::unordered_map<Pair, size_t, PairHash>::value_type item;
+		for (size_t i = 0; i < u64; ++i)
+		{
+			s.read((char*)&item, sizeof item);
+			m_Counts.insert(item);
+		}
+
+		s.read((char*)&u64, sizeof u64);
+		m_Tokens.resize(u64);
+		s.read((char*)m_Tokens.data(), u64 * sizeof TokenId);
 	}
 
 	Tokenizer::Pair Tokenizer::find_most_used_pair(size_t* pCount)
@@ -300,7 +324,7 @@ namespace llm
 		m_MergeRank.reserve(rese);
 		m_IdToBytes.reserve(vocabSize);
 		m_IdToBytes.assign(kBaseVocabSize, {});
-		//m_Counts.reserve(vocabSize);
+		m_Counts.reserve(vocabSize);
 
 		for (size_t b = 0; b < kBaseVocabSize; ++b)
 			m_IdToBytes[b] = String(1, static_cast<Char>(b));

@@ -29,7 +29,8 @@ namespace llm
 
 	public:
 		//using TokenId = size_t;
-		using TokenId = unsigned short;
+		using TokenId = unsigned __int32;
+		//using TokenId = unsigned short;
 		using Char = char;
 		using String = std::basic_string<Char>;
 		static constexpr TokenId err_tok{ TokenId(~0x0) };
@@ -52,6 +53,9 @@ namespace llm
 		void reset(size_t vocabSize);
 		String text(Pair p)const { return m_IdToBytes[p.first] + m_IdToBytes[p.second]; }
 		auto& get_tokens()const { return m_Tokens; }
+		auto& vocab()const { return m_IdToBytes; }
+		auto& merges()const { return m_Merges; }
+		auto& pair_counts()const { return m_Counts; }
 		void tokenize(String const& corpus);
 
 	private:

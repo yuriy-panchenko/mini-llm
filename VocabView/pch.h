@@ -10,4 +10,17 @@
 // add headers that you want to pre-compile here
 #include "framework.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <numeric>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "..\mini_llm_core\tokenizer.h"
+
+
 #endif //PCH_H
