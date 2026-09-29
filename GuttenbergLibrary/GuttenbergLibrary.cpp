@@ -18,7 +18,9 @@
 //constexpr auto destin_root{ "..\\Vocabs\\" };
 
 //constexpr size_t vocab_size{ 0x8000 };
-constexpr size_t max_vocab_size{ 0xFFF0 };
+//constexpr size_t max_vocab_size{ 0xFFF0 };
+
+constexpr size_t max_vocab_size{ std::min(std::numeric_limits<llm::Tokenizer::TokenId>::max() - 0x0f, 0x100000u) };
 
 using namespace std;
 using namespace llm;
@@ -124,7 +126,7 @@ int main(int argc, char const* argv[])
 	// ------------------------------------------------------------------
 	if (argc == 1)
 	{
-		cout << "gutlib src [dst] [flags]\n"
+		cout << "\nuse: gutlib src [dst] [flags]\n"
 			<< "\tsrc\t\t- path to file or folder with .txt files\n"
 			<< "\tdst\t\t- destination folder path (current by default)\n"
 			<< "\t/norm\t\t- normalize whitespaces\n"
