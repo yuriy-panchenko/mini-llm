@@ -5,6 +5,8 @@
 
 namespace llm
 {
+	constexpr unsigned __int32 magic_number{ 0x00000002 };
+
 	std::vector<Tokenizer::TokenId> Tokenizer::to_byte_ids(String const& text)
 	{
 		/*std::vector<Tokenizer::TokenId> ret(text.length());
@@ -154,6 +156,7 @@ namespace llm
 
 	void Tokenizer::Serialize(std::ofstream& s)
 	{
+		s.write((char const*)&magic_number, sizeof magic_number);
 		unsigned __int64 u64{ m_IdToBytes.size() };
 		s.write((char const*)&u64, sizeof u64);
 		for (auto& str : m_IdToBytes)
@@ -187,6 +190,9 @@ namespace llm
 
 	void Tokenizer::Serialize(std::ifstream& s)
 	{
+		std::remove_const<decltype(magic_number)>::type magic;
+		s.read((char*)&magic, sizeof magic);
+
 		m_IdToBytes.clear();
 		m_MergeRank.clear();
 		m_Merges.clear();
