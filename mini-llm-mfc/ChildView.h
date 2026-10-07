@@ -46,6 +46,5 @@ private:
 	CListCtrl m_FastList, m_SlowList;
 	CWorkerThread* m_pTh;
 	std::vector<double> m_LossData;
-	double m_Max, m_Min;
 };
 

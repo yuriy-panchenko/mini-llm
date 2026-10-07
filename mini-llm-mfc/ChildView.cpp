@@ -18,8 +18,6 @@ list_side_offset{ 5 };
 
 CChildView::CChildView()
 	:m_pTh{ nullptr }
-	, m_Max{ 1. }
-	, m_Min{ .0 }
 {}
 
 void CChildView::Initialize(CNetSettingsDlg const& dlg)
@@ -67,9 +65,49 @@ void CChildView::OnPaint()
 {
 	CPaintDC dc(this); // device context for painting
 
-	// TODO: Add your message handler code here
+	CBitmap bmp;
+	bmp.CreateCompatibleBitmap(&dc, m_rChart.Width(), m_rChart.Height());
+	CDC memDC;
+	memDC.CreateCompatibleDC(&dc);
+	int iSave{ memDC.SaveDC() };
+	memDC.SelectObject(bmp);
+	CPen pen{ PS_SOLID,1,RGB(200,200,20) };
+	memDC.SelectObject(pen);
 
-	// Do not call CWnd::OnPaint() for painting messages
+	if (!m_LossData.empty())
+	{
+		auto itFrom{ m_LossData.cbegin() }, itTo{ m_LossData.cend() };
+		if (m_LossData.size() > m_rChart.Width())
+			itFrom = itTo - m_rChart.Width();
+
+		double Max{ *itFrom }, Min{ Max };
+		for (auto it{ std::next(itFrom) }; it != itTo; ++it)
+		{
+			Max = max(Max, *it);
+			Min = min(Min, *it);
+		}
+		if (Max > Min)
+		{
+			CString s;
+			s.Format(_T("Max %.4f, Min %.4f, Count %I64u"), Max, Min, m_LossData.size());
+			memDC.SetTextColor(RGB(200, 200, 200));
+			memDC.SetBkMode(TRANSPARENT);
+			memDC.DrawText(s, CRect{ 0,5,m_rChart.Width(),m_rChart.Height() }, DT_SINGLELINE | DT_TOP | DT_CENTER);
+
+			CPoint pnt{};
+			pnt.y = int(m_rChart.Height() * (Max - *itFrom) / (Max - Min));
+			memDC.MoveTo(pnt);
+			for (auto it{ std::next(itFrom) }; it != itTo; ++it)
+			{
+				++pnt.x;
+				pnt.y = int(m_rChart.Height() * (Max - *it) / (Max - Min));
+				memDC.LineTo(pnt);
+			}
+		}
+	}
+
+	dc.BitBlt(m_rChart.left, m_rChart.top, m_rChart.Width(), m_rChart.Height(), &memDC, 0, 0, SRCCOPY);
+	memDC.RestoreDC(iSave);
 }
 
 
@@ -154,6 +192,10 @@ LRESULT CChildView::OnFastText(WPARAM wParam, LPARAM)
 		for (int i = 0; i < m_FastList.GetHeaderCtrl()->GetItemCount(); i++)
 			m_FastList.SetColumnWidth(i, LVSCW_AUTOSIZE);
 
+	auto loss{ m_pTh->GetLoss() };
+	m_LossData.insert(m_LossData.end(), loss.begin(), loss.end());
+	InvalidateRect(m_rChart);
+
 	return 0;
 }
 
@@ -182,15 +224,6 @@ LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
 	if (!(wParam % (20 * slow_mod)))
 		for (int i = 0; i < m_SlowList.GetHeaderCtrl()->GetItemCount(); i++)
 			m_SlowList.SetColumnWidth(i, LVSCW_AUTOSIZE);
-
-	auto loss{ m_pTh->GetLoss() };
-	for (auto val : loss)
-	{
-		m_Max = max(m_Max,val);
-		//m_Min = min(m_Max,val);
-	}
-	m_LossData.insert(m_LossData.end(), loss.begin(), loss.end());
-	InvalidateRect(m_rChart);
 
 	return 0;
 }
