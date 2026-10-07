@@ -323,12 +323,12 @@ void CChildView::OnContextMenu(CWnd* pWnd, CPoint point)
 			auto pMenu{ menu.GetSubMenu(0) };
 			//auto pMenu{ &menu };
 			if (pMenu)
-				pMenu->TrackPopupMenu(0, point.x, point.y, pWnd);
+				pMenu->TrackPopupMenu(0, point.x, point.y, this);
 		}
 	}
 }
 
 void CChildView::OnEditCopy()
 {
-	// TODO: Add your command handler code here
+	CopyListCtrlToClipboard(m_SlowList);
 }

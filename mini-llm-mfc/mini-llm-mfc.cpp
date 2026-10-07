@@ -212,3 +212,87 @@ CString Utf8ToCString(std::string const& s)
 	out.ReleaseBuffer(n);
 	return out;
 }
+
+void CopyListCtrlToClipboard(CListCtrl& list)
+{
+	auto const columns = list.GetHeaderCtrl()->GetItemCount();
+	auto const rows = list.GetItemCount();
+
+	std::wstring csv;
+
+	auto AppendField = [&csv](std::wstring const& field)
+		{
+			csv += L'"';
+
+			for (auto ch : field)
+			{
+				if (ch == L'"')
+					csv += L'"';
+
+				csv += ch;
+			}
+
+			csv += L'"';
+		};
+
+	// Column headers
+	for (int col = 0; col < columns; ++col)
+	{
+		if (col)
+			csv += L',';
+
+		wchar_t text[1024]{};
+		HDITEM item{};
+		item.mask = HDI_TEXT;
+		item.pszText = text;
+		item.cchTextMax = static_cast<int>(std::size(text));
+
+		list.GetHeaderCtrl()->GetItem(col, &item);
+
+		AppendField(text);
+	}
+
+	csv += L"\r\n";
+
+	// Rows
+	for (int row = 0; row < rows; ++row)
+	{
+		for (int col = 0; col < columns; ++col)
+		{
+			if (col)
+				csv += L',';
+
+			auto text = list.GetItemText(row, col);
+			AppendField(text.GetString());
+		}
+
+		csv += L"\r\n";
+	}
+
+	// Copy Unicode text to the clipboard
+	if (!OpenClipboard(list.GetSafeHwnd()))
+		return;
+
+	EmptyClipboard();
+
+	auto const bytes = (csv.size() + 1) * sizeof(wchar_t);
+	auto hMem = GlobalAlloc(GMEM_MOVEABLE, bytes);
+
+	if (hMem)
+	{
+		if (auto pMem = GlobalLock(hMem))
+		{
+			memcpy(pMem, csv.c_str(), bytes);
+			GlobalUnlock(hMem);
+
+			if (!SetClipboardData(CF_UNICODETEXT, hMem))
+				GlobalFree(hMem); // Ownership transfers only on success.
+		}
+		else
+		{
+			GlobalFree(hMem);
+		}
+	}
+
+	CloseClipboard();
+}

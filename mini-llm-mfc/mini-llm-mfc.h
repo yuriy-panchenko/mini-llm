@@ -15,6 +15,7 @@
 //
 std::string CStringToUtf8(CString const& s);
 CString Utf8ToCString(std::string const& s);
+void CopyListCtrlToClipboard(CListCtrl& list);
 
 class CMiniLLMApp : public CWinApp
 {
