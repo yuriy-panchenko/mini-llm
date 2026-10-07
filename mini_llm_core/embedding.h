@@ -16,6 +16,7 @@ namespace llm
 		size_t m_T{ 0 };
 
 	public:
+		Embedding() = default;
 		explicit Embedding(Matrix const& table);
 		Matrix forward(std::vector<size_t> const& ids);
 		void backward(Matrix const& dOut);

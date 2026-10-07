@@ -17,6 +17,8 @@ namespace llm
 		Linear m_OutputHead;   // dModel -> vocabSize
 
 	public:
+		Model() = default;
+
 		Model(Embedding const& tokenEmbedding, std::vector<TransformerBlock<AttnT>> const& blocks, Linear const& outputHead)
 			:m_TokenEmbedding{ tokenEmbedding }
 			, m_Blocks{ blocks }

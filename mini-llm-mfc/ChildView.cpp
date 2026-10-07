@@ -17,10 +17,17 @@ list_side_offset{ 5 };
 // CChildView
 
 CChildView::CChildView()
+	:m_pTh{ nullptr }
 {}
 
 void CChildView::Initialize(CNetSettingsDlg const& dlg)
 {
+	ASSERT(!m_pTh);
+	if (m_pTh = static_cast<CWorkerThread*>(::AfxBeginThread(RUNTIME_CLASS(CWorkerThread), 0, 0, CREATE_SUSPENDED)))
+	{
+		m_pTh->Init(this, dlg);
+		m_pTh->ResumeThread();
+	}
 }
 
 CChildView::~CChildView()
@@ -31,6 +38,9 @@ BEGIN_MESSAGE_MAP(CChildView, CWnd)
 	ON_WM_PAINT()
 	ON_WM_CREATE()
 	ON_WM_SIZE()
+	ON_WM_DESTROY()
+	ON_MESSAGE(WM_FAST_FINISHED, &OnFastText)
+	ON_MESSAGE(WM_SLOW_FINISHED, &OnSlowText)
 END_MESSAGE_MAP()
 
 
@@ -102,4 +112,54 @@ void CChildView::OnSize(UINT nType, int cx, int cy)
 	r.left = m_rCanvas.CenterPoint().x;
 	r.DeflateRect(list_side_offset, list_side_offset, list_side_offset, list_side_offset);
 	m_SlowList.MoveWindow(r);
+}
+
+void CChildView::OnDestroy()
+{
+	CWnd::OnDestroy();
+
+	if (m_pTh)
+	{
+		m_pTh->PostThreadMessage(WM_QUIT, 0, 0);
+		::WaitForSingleObject(*m_pTh, INFINITE);
+		m_pTh = nullptr;
+	}
+}
+
+LRESULT CChildView::OnFastText(WPARAM wParam, LPARAM)
+{
+	ASSERT(m_pTh);
+
+	CString s;
+	LVITEM item{};
+	item.iItem = m_FastList.GetItemCount();
+	s.Format(_T("%I64u"), wParam);
+	item.pszText = (LPTSTR)(LPCTSTR)s;
+	m_FastList.InsertItem(&item);
+
+	++item.iSubItem;
+	s = m_pTh->GetText(TRUE);
+	item.pszText = (LPTSTR)(LPCTSTR)s;
+	m_FastList.InsertItem(&item);
+
+	return 0;
+}
+
+LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
+{
+	ASSERT(m_pTh);
+
+	CString s;
+	LVITEM item{};
+	item.iItem = m_SlowList.GetItemCount();
+	s.Format(_T("%I64u"), wParam);
+	item.pszText = (LPTSTR)(LPCTSTR)s;
+	m_SlowList.InsertItem(&item);
+
+	++item.iSubItem;
+	s = m_pTh->GetText(FALSE);
+	item.pszText = (LPTSTR)(LPCTSTR)s;
+	m_SlowList.InsertItem(&item);
+
+	return 0;
 }

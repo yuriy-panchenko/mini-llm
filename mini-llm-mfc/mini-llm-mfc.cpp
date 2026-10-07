@@ -190,5 +190,25 @@ void CMiniLLMApp::OnAppAbout()
 
 // CMiniLLMApp message handlers
 
+// CMiniLLMApp:
+// See mini-llm-mfc.cpp for the implementation of this class
+//
+std::string CStringToUtf8(CString const& s)
+{
+	if (s.IsEmpty()) return {};
+	int const n{ WideCharToMultiByte(CP_UTF8, 0, s.GetString(), s.GetLength(), nullptr, 0, nullptr, nullptr) };
+	std::string out((size_t)(n > 0 ? n : 0), '\0');
+	if (n > 0) WideCharToMultiByte(CP_UTF8, 0, s.GetString(), s.GetLength(), out.data(), n, nullptr, nullptr);
+	return out;
+}
 
-
+CString Utf8ToCString(std::string const& s)
+{
+	CString out;
+	if (s.empty()) return out;
+	int const n{ MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0) };
+	if (n <= 0) return out;
+	MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), out.GetBuffer(n), n);
+	out.ReleaseBuffer(n);
+	return out;
+}

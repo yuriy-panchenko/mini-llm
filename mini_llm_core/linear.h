@@ -16,6 +16,7 @@ namespace llm
 		size_t m_T{ 0 };
 
 	public:
+		Linear() = default;
 		Linear(Matrix const& w, Vector const& bias);
 
 		Matrix forward(const Matrix& input);

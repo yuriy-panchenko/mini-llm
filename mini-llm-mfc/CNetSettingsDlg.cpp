@@ -5,7 +5,7 @@
 #include "mini-llm-mfc.h"
 #include "afxdialogex.h"
 #include "CNetSettingsDlg.h"
-
+#include <fstream>
 
 // CNetSettingsDlg dialog
 
@@ -16,14 +16,18 @@ CNetSettingsDlg::CNetSettingsDlg(CWnd* pParent /*=nullptr*/)
 	, m_File_Vocab(_T(""))
 	, m_File_Text(_T(""))
 	, m_Seed(_T(""))
-	, m_Lcoo(0)
+	, m_Model{ 64 }
+	, m_Layers{ 3 }
+	, m_Heads{ 4 }
+	, m_VocabSize{ 0 }
+	, m_CTX{ 64 }
+	, m_Lcoo{ .001 }
 {
-
+	m_Seed = _T("It appears to me");
 }
 
 CNetSettingsDlg::~CNetSettingsDlg()
-{
-}
+{}
 
 void CNetSettingsDlg::DoDataExchange(CDataExchange* pDX)
 {
@@ -41,7 +45,35 @@ void CNetSettingsDlg::DoDataExchange(CDataExchange* pDX)
 
 
 BEGIN_MESSAGE_MAP(CNetSettingsDlg, CDialogEx)
+	ON_EN_CHANGE(IDC_TEXT_BROWSE, &CNetSettingsDlg::OnChangeTextBrowse)
+	ON_EN_CHANGE(IDC_VOCAB_BROWSE, &CNetSettingsDlg::OnChangeVocabBrowse)
 END_MESSAGE_MAP()
 
 
 // CNetSettingsDlg message handlers
+
+void CNetSettingsDlg::OnChangeTextBrowse()
+{
+	m_Corpus.clear();
+
+	if (UpdateData())
+	{
+		std::ifstream file(CStringToUtf8(m_File_Text));
+		if (file)
+			m_Corpus = llm::normalize_whitespace(std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() });
+	}
+}
+
+void CNetSettingsDlg::OnChangeVocabBrowse()
+{
+	if (UpdateData())
+	{
+		std::ifstream file{ CStringToUtf8(m_File_Vocab), std::ios::binary };
+		if (file)
+		{
+			file >> m_Tok;
+			m_VocabSize = m_Tok.vocab_size();
+			UpdateData(FALSE);
+		}
+	}
+}

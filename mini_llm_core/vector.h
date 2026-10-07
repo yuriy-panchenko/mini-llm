@@ -9,6 +9,7 @@ namespace llm
 		:public vdb
 	{
 	public:
+		Vector() = default;
 		Vector(size_t elem, scalar val = {})
 			:vdb(elem, val)
 		{}

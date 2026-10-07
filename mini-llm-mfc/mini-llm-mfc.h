@@ -13,6 +13,8 @@
 // CMiniLLMApp:
 // See mini-llm-mfc.cpp for the implementation of this class
 //
+std::string CStringToUtf8(CString const& s);
+CString Utf8ToCString(std::string const& s);
 
 class CMiniLLMApp : public CWinApp
 {

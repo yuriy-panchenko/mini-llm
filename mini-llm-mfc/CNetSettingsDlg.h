@@ -20,7 +20,10 @@ public:
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
 
+	afx_msg void OnChangeTextBrowse();
+	afx_msg void OnChangeVocabBrowse();
 	DECLARE_MESSAGE_MAP()
+
 public:
 	CString m_File_Vocab;
 	CString m_File_Text;
@@ -31,4 +34,6 @@ public:
 	size_t m_CTX;
 	double m_Lcoo;
 	size_t m_VocabSize;
+	std::string m_Corpus;
+	llm::Tokenizer m_Tok;
 };

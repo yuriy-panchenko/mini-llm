@@ -24,6 +24,7 @@ namespace llm
 		using MatmulGrads = std::pair<Matrix, Matrix>;
 
 	public:
+		Matrix() = default;
 		Matrix(size_t rows, size_t columns);
 
 		size_t size()const { return m_Data.size(); }

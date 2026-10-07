@@ -9,5 +9,6 @@
 
 // add headers that you want to pre-compile here
 #include "framework.h"
+#include "..\mini_llm_core\core.h"
 
 #endif //PCH_H
