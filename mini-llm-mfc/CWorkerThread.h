@@ -5,6 +5,7 @@ class CNetSettingsDlg;
 class CChildView;
 
 #define WM_NEXT_STEP	(WM_APP+0x0001)
+constexpr size_t fast_mod{ 10ull }, slow_mod{ 100ull }, max_steps{ 100'000ull };
 
 class CWorkerThread : public CWinThread
 {

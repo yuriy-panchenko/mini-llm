@@ -18,6 +18,8 @@ list_side_offset{ 5 };
 
 CChildView::CChildView()
 	:m_pTh{ nullptr }
+	, m_Max{ 1. }
+	, m_Min{ .0 }
 {}
 
 void CChildView::Initialize(CNetSettingsDlg const& dlg)
@@ -132,15 +134,25 @@ LRESULT CChildView::OnFastText(WPARAM wParam, LPARAM)
 
 	CString s;
 	LVITEM item{};
+	item.mask = LVIF_TEXT;
 	item.iItem = m_FastList.GetItemCount();
+	bool const should_show{ item.iItem ? (bool)m_FastList.IsItemVisible(item.iItem - 1) : true };
 	s.Format(_T("%I64u"), wParam);
 	item.pszText = (LPTSTR)(LPCTSTR)s;
-	m_FastList.InsertItem(&item);
+	auto const index{ m_FastList.InsertItem(&item) };
 
 	++item.iSubItem;
 	s = m_pTh->GetText(TRUE);
+	s.Replace(_T("\n"), _T("\\n"));
 	item.pszText = (LPTSTR)(LPCTSTR)s;
-	m_FastList.InsertItem(&item);
+	m_FastList.SetItem(&item);
+
+	if (should_show)
+		m_FastList.EnsureVisible(index, FALSE);
+
+	if (!(wParam % (20 * fast_mod)))
+		for (int i = 0; i < m_FastList.GetHeaderCtrl()->GetItemCount(); i++)
+			m_FastList.SetColumnWidth(i, LVSCW_AUTOSIZE);
 
 	return 0;
 }
@@ -151,15 +163,34 @@ LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
 
 	CString s;
 	LVITEM item{};
+	item.mask = LVIF_TEXT;
 	item.iItem = m_SlowList.GetItemCount();
+	bool const should_show{ item.iItem ? (bool)m_SlowList.IsItemVisible(item.iItem - 1) : true };
 	s.Format(_T("%I64u"), wParam);
 	item.pszText = (LPTSTR)(LPCTSTR)s;
-	m_SlowList.InsertItem(&item);
+	auto const index{ m_SlowList.InsertItem(&item) };
 
 	++item.iSubItem;
 	s = m_pTh->GetText(FALSE);
+	s.Replace(_T("\n"), _T("\\n"));
 	item.pszText = (LPTSTR)(LPCTSTR)s;
-	m_SlowList.InsertItem(&item);
+	m_SlowList.SetItem(&item);
+
+	if (should_show)
+		m_SlowList.EnsureVisible(index, FALSE);
+
+	if (!(wParam % (20 * slow_mod)))
+		for (int i = 0; i < m_SlowList.GetHeaderCtrl()->GetItemCount(); i++)
+			m_SlowList.SetColumnWidth(i, LVSCW_AUTOSIZE);
+
+	auto loss{ m_pTh->GetLoss() };
+	for (auto val : loss)
+	{
+		m_Max = max(m_Max,val);
+		//m_Min = min(m_Max,val);
+	}
+	m_LossData.insert(m_LossData.end(), loss.begin(), loss.end());
+	InvalidateRect(m_rChart);
 
 	return 0;
 }

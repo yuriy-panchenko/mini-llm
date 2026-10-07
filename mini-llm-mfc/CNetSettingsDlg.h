@@ -34,6 +34,8 @@ public:
 	size_t m_CTX;
 	double m_Lcoo;
 	size_t m_VocabSize;
+	
 	std::string m_Corpus;
 	llm::Tokenizer m_Tok;
+	virtual BOOL OnInitDialog();
 };

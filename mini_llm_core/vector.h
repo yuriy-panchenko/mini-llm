@@ -1,5 +1,6 @@
 #pragma once
 #include <random>
+#include <cassert>
 #include "classmap.h"
 
 namespace llm

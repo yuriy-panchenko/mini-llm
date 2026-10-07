@@ -10,7 +10,6 @@
 
 // CWorkerThread
 using namespace llm;
-constexpr size_t fast_mod{ 10ull }, slow_mod{ 100ull }, max_steps{ 100'000ull };
 
 IMPLEMENT_DYNCREATE(CWorkerThread, CWinThread)
 
@@ -107,18 +106,16 @@ void CWorkerThread::OnNextStep(WPARAM, LPARAM)
 
 	auto const logits{ m_Model.forward(x) };
 	SetLoss(cross_entropy(logits, y));
+	m_Model.zero_grad();
+	auto const dLogits{ cross_entropy_backward(logits, y) };
+	m_Model.backward(dLogits);
+	m_Model.update((llm::scalar)m_Lcoo);
 
 	if (!(m_uStep % fast_mod))
 	{
 		SetText(TRUE, greedy_decode());
 		m_pView->PostMessage(WM_FAST_FINISHED, m_uStep);
 	}
-
-	m_Model.zero_grad();
-	auto const dLogits{ cross_entropy_backward(logits, y) };
-	m_Model.backward(dLogits);
-	m_Model.update((llm::scalar)m_Lcoo);
-
 	if (!(m_uStep % slow_mod))
 	{
 		SetText(FALSE, generate(m_Sample, 60));
