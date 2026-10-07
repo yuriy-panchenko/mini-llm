@@ -54,5 +54,8 @@ private:
 	CWorkerThread* m_pTh;
 	std::vector<double> m_LossData,m_MA50;
 	BOOL m_bShowAll,m_bShowMA50,m_bShowZero;
+public:
+	afx_msg void OnContextMenu(CWnd* /*pWnd*/, CPoint /*point*/);
+	afx_msg void OnEditCopy();
 };
 

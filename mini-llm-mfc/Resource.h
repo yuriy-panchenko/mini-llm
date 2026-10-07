@@ -10,6 +10,8 @@
 #define IDD_NET_SETTINGS_DLG            310
 #define ID_LIST_FAST                    310
 #define ID_LIST_SLOW                    311
+#define IDR_MENU1                       313
+#define IDR_COPY_MENU                   313
 #define IDC_TEXT_BROWSE                 1000
 #define IDC_SEED_EDIT                   1001
 #define IDC_MODEL_EDIT                  1002
@@ -22,13 +24,15 @@
 #define ID_SHOW_ALL                     32771
 #define ID_SHOW_MOVING_AVERAGE          32772
 #define ID_SHOW_ZERO                    32773
+#define ID_COPY                         32774
+#define ID_FI                           32775
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        313
-#define _APS_NEXT_COMMAND_VALUE         32774
+#define _APS_NEXT_RESOURCE_VALUE        314
+#define _APS_NEXT_COMMAND_VALUE         32776
 #define _APS_NEXT_CONTROL_VALUE         1003
 #define _APS_NEXT_SYMED_VALUE           312
 #endif

@@ -51,6 +51,8 @@ BEGIN_MESSAGE_MAP(CChildView, CWnd)
 	ON_WM_ERASEBKGND()
 	ON_COMMAND(ID_SHOW_ZERO, &CChildView::OnShowZero)
 	ON_UPDATE_COMMAND_UI(ID_SHOW_ZERO, &CChildView::OnUpdateShowZero)
+	ON_WM_CONTEXTMENU()
+	ON_COMMAND(ID_EDIT_COPY, &CChildView::OnEditCopy)
 END_MESSAGE_MAP()
 
 
@@ -309,4 +311,24 @@ void CChildView::OnShowZero()
 void CChildView::OnUpdateShowZero(CCmdUI* pCmdUI)
 {
 	pCmdUI->SetCheck(m_bShowZero);
+}
+
+void CChildView::OnContextMenu(CWnd* pWnd, CPoint point)
+{
+	if (pWnd == &m_SlowList)
+	{
+		CMenu menu;
+		if (menu.LoadMenu(IDR_COPY_MENU))
+		{
+			auto pMenu{ menu.GetSubMenu(0) };
+			//auto pMenu{ &menu };
+			if (pMenu)
+				pMenu->TrackPopupMenu(0, point.x, point.y, pWnd);
+		}
+	}
+}
+
+void CChildView::OnEditCopy()
+{
+	// TODO: Add your command handler code here
 }
