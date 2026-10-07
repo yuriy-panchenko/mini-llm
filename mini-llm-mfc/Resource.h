@@ -18,15 +18,17 @@
 #define IDC_CTX_EDIT                    1005
 #define IDC_LCOO_EDIT                   1006
 #define IDC_VOCAB_BROWSE                1007
-#define IDC_CTX_EDIT2                   1008
 #define IDC_VOCAB_EDIT                  1008
+#define ID_SHOW_ALL                     32771
+#define ID_SHOW_MOVING_AVERAGE          32772
+#define ID_SHOW_ZERO                    32773
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        313
-#define _APS_NEXT_COMMAND_VALUE         32771
+#define _APS_NEXT_COMMAND_VALUE         32774
 #define _APS_NEXT_CONTROL_VALUE         1003
 #define _APS_NEXT_SYMED_VALUE           312
 #endif

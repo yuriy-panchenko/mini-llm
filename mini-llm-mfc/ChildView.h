@@ -39,12 +39,20 @@ protected:
 	afx_msg void OnDestroy();
 	afx_msg LRESULT OnFastText(WPARAM, LPARAM);
 	afx_msg LRESULT OnSlowText(WPARAM, LPARAM);
+	afx_msg void OnShowAll();
+	afx_msg void OnUpdateShowAll(CCmdUI* pCmdUI);
+	afx_msg void OnShowMovingAverage();
+	afx_msg void OnUpdateShowMovingAverage(CCmdUI* pCmdUI);
+	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
+	afx_msg void OnShowZero();
+	afx_msg void OnUpdateShowZero(CCmdUI* pCmdUI);
 	DECLARE_MESSAGE_MAP()
 
 private:
 	CRect m_rCanvas, m_rChart;
 	CListCtrl m_FastList, m_SlowList;
 	CWorkerThread* m_pTh;
-	std::vector<double> m_LossData;
+	std::vector<double> m_LossData,m_MA50;
+	BOOL m_bShowAll,m_bShowMA50,m_bShowZero;
 };
 

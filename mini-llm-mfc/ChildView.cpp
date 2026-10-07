@@ -18,6 +18,9 @@ list_side_offset{ 5 };
 
 CChildView::CChildView()
 	:m_pTh{ nullptr }
+	, m_bShowAll{ FALSE }
+	, m_bShowMA50{ TRUE }
+	, m_bShowZero{ TRUE }
 {}
 
 void CChildView::Initialize(CNetSettingsDlg const& dlg)
@@ -41,6 +44,13 @@ BEGIN_MESSAGE_MAP(CChildView, CWnd)
 	ON_WM_DESTROY()
 	ON_MESSAGE(WM_FAST_FINISHED, &OnFastText)
 	ON_MESSAGE(WM_SLOW_FINISHED, &OnSlowText)
+	ON_COMMAND(ID_SHOW_ALL, &CChildView::OnShowAll)
+	ON_UPDATE_COMMAND_UI(ID_SHOW_ALL, &CChildView::OnUpdateShowAll)
+	ON_COMMAND(ID_SHOW_MOVING_AVERAGE, &CChildView::OnShowMovingAverage)
+	ON_UPDATE_COMMAND_UI(ID_SHOW_MOVING_AVERAGE, &CChildView::OnUpdateShowMovingAverage)
+	ON_WM_ERASEBKGND()
+	ON_COMMAND(ID_SHOW_ZERO, &CChildView::OnShowZero)
+	ON_UPDATE_COMMAND_UI(ID_SHOW_ZERO, &CChildView::OnUpdateShowZero)
 END_MESSAGE_MAP()
 
 
@@ -77,7 +87,8 @@ void CChildView::OnPaint()
 	if (!m_LossData.empty())
 	{
 		auto itFrom{ m_LossData.cbegin() }, itTo{ m_LossData.cend() };
-		if (m_LossData.size() > m_rChart.Width())
+		bool const bCompressed{ m_LossData.size() > m_rChart.Width() };
+		if (!m_bShowAll && bCompressed)
 			itFrom = itTo - m_rChart.Width();
 
 		double Max{ *itFrom }, Min{ Max };
@@ -88,20 +99,39 @@ void CChildView::OnPaint()
 		}
 		if (Max > Min)
 		{
+			if (m_bShowZero)
+				Min = .0;
 			CString s;
 			s.Format(_T("Max %.4f, Min %.4f, Count %I64u"), Max, Min, m_LossData.size());
+			CFont font;
+			font.CreatePointFont(90, _T("Consolas"));
+			memDC.SelectObject(font);
 			memDC.SetTextColor(RGB(200, 200, 200));
 			memDC.SetBkMode(TRANSPARENT);
 			memDC.DrawText(s, CRect{ 0,5,m_rChart.Width(),m_rChart.Height() }, DT_SINGLELINE | DT_TOP | DT_CENTER);
 
 			CPoint pnt{};
-			pnt.y = int(m_rChart.Height() * (Max - *itFrom) / (Max - Min));
-			memDC.MoveTo(pnt);
-			for (auto it{ std::next(itFrom) }; it != itTo; ++it)
+			if (m_bShowAll && bCompressed)
 			{
-				++pnt.x;
-				pnt.y = int(m_rChart.Height() * (Max - *it) / (Max - Min));
-				memDC.LineTo(pnt);
+				pnt.y = int(m_rChart.Height() * (Max - *itFrom) / (Max - Min));
+				memDC.MoveTo(pnt);
+				for (auto it{ std::next(itFrom) }; it != itTo; ++it)
+				{
+					pnt.x = int(double(m_rChart.Width()) * std::distance(itFrom, it) / m_LossData.size());
+					pnt.y = int(m_rChart.Height() * (Max - *it) / (Max - Min));
+					memDC.LineTo(pnt);
+				}
+			}
+			else
+			{
+				pnt.y = int(m_rChart.Height() * (Max - *itFrom) / (Max - Min));
+				memDC.MoveTo(pnt);
+				for (auto it{ std::next(itFrom) }; it != itTo; ++it)
+				{
+					++pnt.x;
+					pnt.y = int(m_rChart.Height() * (Max - *it) / (Max - Min));
+					memDC.LineTo(pnt);
+				}
 			}
 		}
 	}
@@ -143,13 +173,13 @@ void CChildView::OnSize(UINT nType, int cx, int cy)
 
 	auto r{ m_rCanvas };
 	r.top = m_rChart.bottom;
-	r.right = m_rCanvas.CenterPoint().x;
+	r.right = m_rCanvas.left + m_rCanvas.Width() * 1 / 4;
 	r.DeflateRect(list_side_offset, list_side_offset, list_side_offset, list_side_offset);
 	m_FastList.MoveWindow(r);
 
 	r = m_rCanvas;
 	r.top = m_rChart.bottom;
-	r.left = m_rCanvas.CenterPoint().x;
+	r.left = m_rCanvas.left + m_rCanvas.Width() * 1 / 4;
 	r.DeflateRect(list_side_offset, list_side_offset, list_side_offset, list_side_offset);
 	m_SlowList.MoveWindow(r);
 }
@@ -226,4 +256,57 @@ LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
 			m_SlowList.SetColumnWidth(i, LVSCW_AUTOSIZE);
 
 	return 0;
+}
+
+void CChildView::OnShowAll()
+{
+	m_bShowAll = !m_bShowAll;
+	InvalidateRect(m_rChart);
+}
+
+void CChildView::OnUpdateShowAll(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_bShowAll);
+}
+
+void CChildView::OnShowMovingAverage()
+{
+	m_bShowMA50 = !m_bShowMA50;
+	InvalidateRect(m_rChart);
+}
+
+void CChildView::OnUpdateShowMovingAverage(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_bShowMA50);
+}
+
+BOOL CChildView::OnEraseBkgnd(CDC* pDC)
+{
+	// Erase everything EXCEPT the chart.
+	CRect rClient;
+	GetClientRect(&rClient);
+	auto iSave{ pDC->SaveDC() };
+
+	CBrush* pOldBrush = (CBrush*)pDC->SelectStockObject(WHITE_BRUSH);
+
+	// This is the important part.
+	pDC->ExcludeClipRect(m_rChart);
+
+	pDC->FillRect(&rClient, (CBrush*)CBrush::FromHandle(
+		(HBRUSH)GetStockObject(WHITE_BRUSH)));
+
+	pDC->RestoreDC(iSave);
+	//pDC->SelectObject(pOldBrush);
+
+	return TRUE;    // We handled the background erase.
+}
+void CChildView::OnShowZero()
+{
+	m_bShowZero = !m_bShowZero;
+	InvalidateRect(m_rChart);
+}
+
+void CChildView::OnUpdateShowZero(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_bShowZero);
 }
