@@ -132,7 +132,7 @@ int main(int argc, char const* argv[])
 			<< "\t/norm\t\t- normalize whitespaces\n"
 			<< "\t/dna\t\t- open file as Genome file\n"
 			<< "\t/big\t\t- save combined and cleaned corpus to corpus.txt file\n"
-			<< "\t/size=1024\t- max vocabulary size\n"
+			<< "\t/size=1024\t- max vocabulary size (default is " << max_vocab_size << ")\n"
 			<< endl;
 		return EXIT_SUCCESS;
 	}
@@ -286,7 +286,7 @@ int main(int argc, char const* argv[])
 	gTok.reset(vocab_size);
 	gTok.tokenize(corpus);
 
-	size_t milestone{ 0x200ull }, max_len{ 1ull }, best_count;
+	size_t milestone{ 0x200ull }, max_len{ 1ull }, best_count, same_freq_count{}, curr_freq{};
 	std::string cmb_text;
 	bool just_saved{ false };
 
@@ -299,8 +299,11 @@ int main(int argc, char const* argv[])
 			break;
 		auto tok_size{ gTok.get_tokens().size() };
 		gTok.unite(best, best_count);
-		auto const tpEnd{ steady_clock::now() };
+		if (best_count != curr_freq)
+			curr_freq = best_count, same_freq_count = {};
+		++same_freq_count;
 
+		auto const tpEnd{ steady_clock::now() };
 		cmb_text = gTok.text(best);
 		max_len = std::max(max_len, cmb_text.length());
 		std::cout
@@ -308,7 +311,7 @@ int main(int argc, char const* argv[])
 			<< ", lib " << gTok.vocab_size()
 			<< ", max " << max_len
 			<< '\t' << fixed << setprecision(3) << duration_cast<milliseconds>(tpEnd - tpStart).count() / 1000.
-			<< '\t' << best_count << "\t\"" << cmb_text << '\"'
+			<< '\t' << best_count << "\t" << same_freq_count << '\t' << cmb_text.length() << "\t\"" << cmb_text << '\"'
 			;
 
 		if (gTok.vocab_size() == milestone)

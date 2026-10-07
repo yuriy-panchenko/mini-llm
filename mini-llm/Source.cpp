@@ -684,10 +684,10 @@ int main()
 		assert(res == corpus);
 	}*/
 
-	std::ifstream file("conversations.txt");
+	std::ifstream file("text.txt");
 	//auto const corpus{ llm::normalize_whitespace(llm::read_all_files("..\\D184MB\\")) };
-	//auto const corpus{ llm::normalize_whitespace(std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() }) };
-	auto const corpus{ std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() } };
+	auto const corpus{ llm::normalize_whitespace(std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() }) };
+	//auto const corpus{ std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() } };
 	std::cout << "Corpus has " << corpus.length() << " chars" << std::endl;
 
 	//{
@@ -769,15 +769,19 @@ int main()
 	//	std::cout << "Predicted (untrained, argmax per position): \"" << tok.decode(predicted) << "\"\n";
 	//}
 	{
+		std::string const sample{ "It appears to me" };
 		Tokenizer tok;
 		//tok.train(corpus, 1024);          // or load a saved tokenizer
 		{
-			std::string const fn{ "Hello\\token512.bin" };
+			std::string const fn{ "token1K.bin" };
 			std::ifstream file{ "..\\Vocabs\\" + fn, std::ios::binary };
 			if (file)
 			{
 				file >> tok;
 				std::cout << "\nDictionary " + fn;
+				/*auto t{ tok.encode("Hi,how you doing?") };
+				auto res{ tok.decode_chunks(t) };
+				int y = 0;*/
 			}
 			else
 			{
@@ -787,7 +791,7 @@ int main()
 		}
 
 		size_t const d_model = 64;
-		size_t const n_layers = 2;
+		size_t const n_layers = 3;
 		size_t const n_heads = 4;
 		size_t const vocab = tok.vocab_size();
 		size_t const ctx = 64;
@@ -837,11 +841,11 @@ int main()
 					window.push_back(next);
 					ret += tok.decode({ static_cast<Tokenizer::TokenId>(next) });
 
-					if (auto p{ ret.find("User:") }; p != std::string::npos)
-					{
-						ret.resize(p);   // stop before the model starts writing the user's next turn
-						break;
-					}
+					//if (auto p{ ret.find("User:") }; p != std::string::npos)
+					//{
+					//	ret.resize(p);   // stop before the model starts writing the user's next turn
+					//	break;
+					//}
 				}
 				return ret;
 			};
@@ -850,7 +854,7 @@ int main()
 		// above (different tokenizer, different single-head model), this is a fair
 		// comparison because it's the exact model about to be trained below.
 		//auto const sampleIds{ tok.encode("the quick fox") };
-		auto const sampleIds{ tok.encode("User: Hi! How are you?\nBot: ") };
+		auto const sampleIds{ tok.encode(sample) };
 
 		auto greedy_decode = [&](Model<MultiHeadAttention>& m)->llm::Tokenizer::String
 			{
@@ -874,7 +878,7 @@ int main()
 		auto all_ids = tok.encode(corpus);
 		assert(all_ids.size() > ctx + 1);   // guards the subtraction below
 
-		for (int step = 0; step < 15'000; ++step)
+		for (int step = 0; step < 100'000; ++step)
 		{
 			size_t start = g_Rng() % (all_ids.size() - ctx - 1);
 			std::vector<size_t> x(all_ids.begin() + start, all_ids.begin() + start + ctx);
@@ -883,19 +887,22 @@ int main()
 			Matrix logits = model.forward(x);
 			scalar loss = cross_entropy(logits, y);
 			if (step % 10 == 0)
-				std::cout << "step " << step << " loss " << std::fixed << std::setprecision(3) << loss;
+				std::cout << "\nstep " << step << " loss " << std::fixed << std::setprecision(3) << loss;
 
 			model.zero_grad();
 			auto dLogits = cross_entropy_backward(logits, y);
 			model.backward(dLogits);
 			model.update(lr);
 			if (step % 500 == 0)
-				std::cout << "\t(*): \"" << generate("User: Hi! How are you?\nBot:", 60) << "\"\n";
-			else if (step % 10 == 0)
-				std::cout << "\t\"" << greedy_decode(model) << "\"\n";
+				std::cout << "\n(*): \"" << generate(sample, 60) << "\"\n";
+			else if (step&&step % 100 == 0)
+				std::cout << "\n\"" << greedy_decode(model) << "\"\n"
+				;
+			if (loss < .05)
+				break;
 		}
 
-		std::cout << "\t(*): \"" << generate("User: Hi! How are you?\nBot:", 60) << "\"\n";
+		std::cout << "\n(*FINAL*): \"" << generate(sample, 60) << "\"\n";
 		//std::cout << "\nPredicted (after training):  \"" << greedy_decode(model) << "\"\n";
 	}
 

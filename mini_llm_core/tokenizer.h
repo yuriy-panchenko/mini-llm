@@ -41,6 +41,7 @@ namespace llm
 
 		std::vector<TokenId> encode(String const& text) const;
 		String decode(std::vector<TokenId> const& ids) const;
+		std::vector<String> decode_chunks(std::vector<TokenId> const& ids) const;
 
 		size_t vocab_size() const { return m_IdToBytes.size(); }
 
