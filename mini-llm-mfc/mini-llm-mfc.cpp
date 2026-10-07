@@ -10,6 +10,7 @@
 #include "MainFrm.h"
 
 #include "ChildFrm.h"
+#include "CNetSettingsDlg.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -105,7 +106,7 @@ BOOL CMiniLLMApp::InitInstance()
 	//TODO: add additional member variables and load calls for
 	//	additional menu types your application may need
 	HINSTANCE hInst = AfxGetResourceHandle();
-	m_hMDIMenu  = ::LoadMenu(hInst, MAKEINTRESOURCE(IDR_minillmmfcTYPE));
+	m_hMDIMenu = ::LoadMenu(hInst, MAKEINTRESOURCE(IDR_minillmmfcTYPE));
 	m_hMDIAccel = ::LoadAccelerators(hInst, MAKEINTRESOURCE(IDR_minillmmfcTYPE));
 
 
@@ -115,6 +116,7 @@ BOOL CMiniLLMApp::InitInstance()
 	pFrame->ShowWindow(m_nCmdShow);
 	pFrame->UpdateWindow();
 
+	OnFileNew();
 	return TRUE;
 }
 
@@ -135,10 +137,17 @@ int CMiniLLMApp::ExitInstance()
 
 void CMiniLLMApp::OnFileNew()
 {
-	CMainFrame* pFrame = STATIC_DOWNCAST(CMainFrame, m_pMainWnd);
-	// create a new MDI child window
-	pFrame->CreateNewChild(
-		RUNTIME_CLASS(CChildFrame), IDR_minillmmfcTYPE, m_hMDIMenu, m_hMDIAccel);
+	CNetSettingsDlg dlg;
+	if (dlg.DoModal() == IDOK)
+	{
+		CMainFrame* pFrame = STATIC_DOWNCAST(CMainFrame, m_pMainWnd);
+		// create a new MDI child window
+		if (auto pChild{ static_cast<CChildFrame*>(pFrame->CreateNewChild(
+			RUNTIME_CLASS(CChildFrame), IDR_minillmmfcTYPE, m_hMDIMenu, m_hMDIAccel)) })
+		{
+			pChild->GetView().Initialize(dlg);
+		}
+	}
 }
 
 // CAboutDlg dialog used for App About
@@ -148,7 +157,7 @@ class CAboutDlg : public CDialogEx
 public:
 	CAboutDlg() noexcept;
 
-// Dialog Data
+	// Dialog Data
 #ifdef AFX_DESIGN_TIME
 	enum { IDD = IDD_ABOUTBOX };
 #endif
@@ -156,14 +165,13 @@ public:
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
 
-// Implementation
+	// Implementation
 protected:
 	DECLARE_MESSAGE_MAP()
 };
 
 CAboutDlg::CAboutDlg() noexcept : CDialogEx(IDD_ABOUTBOX)
-{
-}
+{}
 
 void CAboutDlg::DoDataExchange(CDataExchange* pDX)
 {

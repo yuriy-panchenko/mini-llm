@@ -199,6 +199,8 @@
   <ItemGroup>
     <ClInclude Include="ChildFrm.h" />
     <ClInclude Include="ChildView.h" />
+    <ClInclude Include="CNetSettingsDlg.h" />
+    <ClInclude Include="CWorkerThread.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="MainFrm.h" />
     <ClInclude Include="mini-llm-mfc.h" />
@@ -209,6 +211,8 @@
   <ItemGroup>
     <ClCompile Include="ChildFrm.cpp" />
     <ClCompile Include="ChildView.cpp" />
+    <ClCompile Include="CNetSettingsDlg.cpp" />
+    <ClCompile Include="CWorkerThread.cpp" />
     <ClCompile Include="MainFrm.cpp" />
     <ClCompile Include="mini-llm-mfc.cpp" />
     <ClCompile Include="pch.cpp">

@@ -4,33 +4,40 @@
 
 
 #pragma once
+class CNetSettingsDlg;
 
-
+constexpr size_t fast_mod{ 10ull }, slow_mod{ 100ull };
 // CChildView window
 
 class CChildView : public CWnd
 {
-// Construction
+	// Construction
 public:
 	CChildView();
-
-// Attributes
+	void Initialize(CNetSettingsDlg const&);
+	// Attributes
 public:
 
-// Operations
+	// Operations
 public:
 
-// Overrides
-	protected:
+	// Overrides
+protected:
 	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
 
-// Implementation
+	// Implementation
 public:
 	virtual ~CChildView();
 
 	// Generated message map functions
 protected:
 	afx_msg void OnPaint();
+	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
+	afx_msg void OnSize(UINT nType, int cx, int cy);
 	DECLARE_MESSAGE_MAP()
+
+private:
+	CRect m_rCanvas, m_rChart;
+	CListCtrl m_FastList, m_SlowList;
 };
 

@@ -11,20 +11,23 @@ class CChildFrame : public CMDIChildWnd
 public:
 	CChildFrame() noexcept;
 
-// Attributes
+	auto& GetView()const { return m_wndView; };
+	auto& GetView() { return m_wndView; };
+
+	// Attributes
 protected:
 	CSplitterWnd m_wndSplitter;
 public:
 
-// Operations
+	// Operations
 public:
 
-// Overrides
-	public:
+	// Overrides
+public:
 	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
 	virtual BOOL OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* pHandlerInfo);
 
-// Implementation
+	// Implementation
 public:
 	// view for the client area of the frame.
 	CChildView m_wndView;
@@ -34,7 +37,7 @@ public:
 	virtual void Dump(CDumpContext& dc) const;
 #endif
 
-// Generated message map functions
+	// Generated message map functions
 protected:
 	afx_msg void OnFileClose();
 	afx_msg void OnSetFocus(CWnd* pOldWnd);

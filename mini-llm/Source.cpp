@@ -898,8 +898,8 @@ int main()
 			else if (step&&step % 100 == 0)
 				std::cout << "\n\"" << greedy_decode(model) << "\"\n"
 				;
-			if (loss < .05)
-				break;
+			//if (loss < .05)
+			//	break;
 		}
 
 		std::cout << "\n(*FINAL*): \"" << generate(sample, 60) << "\"\n";
