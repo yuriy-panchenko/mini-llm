@@ -222,17 +222,17 @@ void CopyListCtrlToClipboard(CListCtrl& list)
 
 	auto AppendField = [&csv](std::wstring const& field)
 		{
-			csv += L'"';
+			//csv += L'"';
 
 			for (auto ch : field)
 			{
-				if (ch == L'"')
-					csv += L'"';
+				//if (ch == L'"')
+				//	csv += L'"';
 
 				csv += ch;
 			}
 
-			csv += L'"';
+			//csv += L'"';
 		};
 
 	// Column headers
@@ -260,7 +260,7 @@ void CopyListCtrlToClipboard(CListCtrl& list)
 		for (int col = 0; col < columns; ++col)
 		{
 			if (col)
-				csv += L',';
+				csv += L'\t';
 
 			auto text = list.GetItemText(row, col);
 			AppendField(text.GetString());

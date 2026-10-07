@@ -104,7 +104,7 @@ void CChildView::OnPaint()
 			if (m_bShowZero)
 				Min = .0;
 			CString s;
-			s.Format(_T("Max %.4f, Min %.4f, Count %I64u"), Max, Min, m_LossData.size());
+			s.Format(_T("Max %.4f  Min %.4f  Count %I64u"), Max, Min, m_LossData.size());
 			CFont font;
 			font.CreatePointFont(90, _T("Consolas"));
 			memDC.SelectObject(font);
@@ -214,6 +214,7 @@ LRESULT CChildView::OnFastText(WPARAM wParam, LPARAM)
 	++item.iSubItem;
 	s = m_pTh->GetText(TRUE);
 	s.Replace(_T("\n"), _T("\\n"));
+	s.Replace(_T("\t"), _T("\\t"));
 	item.pszText = (LPTSTR)(LPCTSTR)s;
 	m_FastList.SetItem(&item);
 
@@ -247,6 +248,7 @@ LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
 	++item.iSubItem;
 	s = m_pTh->GetText(FALSE);
 	s.Replace(_T("\n"), _T("\\n"));
+	s.Replace(_T("\t"), _T("\\t"));
 	item.pszText = (LPTSTR)(LPCTSTR)s;
 	m_SlowList.SetItem(&item);
 
