@@ -239,7 +239,7 @@ void CopyListCtrlToClipboard(CListCtrl& list)
 	for (int col = 0; col < columns; ++col)
 	{
 		if (col)
-			csv += L',';
+			csv += L'\t';
 
 		wchar_t text[1024]{};
 		HDITEM item{};

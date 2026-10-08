@@ -13,11 +13,12 @@ using namespace llm;
 
 IMPLEMENT_DYNCREATE(CWorkerThread, CWinThread)
 
-std::mt19937 CWorkerThread::g_Rng{ std::random_device{}() };
-std::normal_distribution<scalar> CWorkerThread::g_Dist{ 0.f, 1.f };
 
 CWorkerThread::CWorkerThread()
 	:m_uStep{}
+	, m_Rng{ std::random_device{}() }
+	, m_Dist{ 0.f, 1.f }
+
 {}
 
 CWorkerThread::~CWorkerThread()
@@ -41,22 +42,22 @@ void CWorkerThread::Init(CChildView* pView, CNetSettingsDlg const& dlg)
 		// copying it into every emplace_back() would give every layer (and every
 		// one of Wq/Wk/Wv/Wo within a layer) byte-identical starting weights.
 		MultiHeadAttention causalAttn{
-			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(g_Rng, g_Dist), Vector{dlg.m_Model}.random(g_Rng, g_Dist) },
-			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(g_Rng, g_Dist), Vector{dlg.m_Model}.random(g_Rng, g_Dist) },
-			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(g_Rng, g_Dist), Vector{dlg.m_Model}.random(g_Rng, g_Dist) },
-			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(g_Rng, g_Dist), Vector{dlg.m_Model}.random(g_Rng, g_Dist) },
+			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model}.random(m_Rng, m_Dist) },
+			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model}.random(m_Rng, m_Dist) },
+			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model}.random(m_Rng, m_Dist) },
+			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model}.random(m_Rng, m_Dist) },
 			dlg.m_Heads, true };
 
 		body.emplace_back(
 			causalAttn,
 			RMSNorm{ Vector{dlg.m_Model, 1.f} },
-			Linear{ Matrix{dlg.m_Model, d_ff}.xavier(g_Rng, g_Dist), Vector{d_ff}.random(g_Rng, g_Dist) },
-			Linear{ Matrix{d_ff, dlg.m_Model}.xavier(g_Rng, g_Dist), Vector{dlg.m_Model}.random(g_Rng, g_Dist) },
+			Linear{ Matrix{dlg.m_Model, d_ff}.xavier(m_Rng, m_Dist), Vector{d_ff}.random(m_Rng, m_Dist) },
+			Linear{ Matrix{d_ff, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model}.random(m_Rng, m_Dist) },
 			RMSNorm{ Vector{dlg.m_Model, 1.f} });
 	}
 
-	m_Model = { Embedding{ Matrix{dlg.m_VocabSize, dlg.m_Model}.xavier(g_Rng, g_Dist) },
-		std::move(body),Linear{ Matrix{dlg.m_Model, dlg.m_VocabSize}.xavier(g_Rng, g_Dist), Vector{dlg.m_VocabSize} } };
+	m_Model = { Embedding{ Matrix{dlg.m_VocabSize, dlg.m_Model}.xavier(m_Rng, m_Dist) },
+		std::move(body),Linear{ Matrix{dlg.m_Model, dlg.m_VocabSize}.xavier(m_Rng, m_Dist), Vector{dlg.m_VocabSize} } };
 
 	m_Sample = CStringToUtf8(dlg.m_Seed);
 	m_SampleIds = m_Tok.encode(m_Sample);
@@ -97,18 +98,18 @@ END_MESSAGE_MAP()
 void CWorkerThread::OnNextStep(WPARAM, LPARAM)
 {
 	ASSERT(m_pView);
+	ASSERT(m_AllIds.size() > m_CTX + 1);
 
-	size_t const start{ g_Rng() % (m_AllIds.size() - m_CTX - 1) };
-
+	size_t const start{ m_Rng() % (m_AllIds.size() - m_CTX - 1) };
+	auto const itStart{ m_AllIds.begin() + start }, itEnd{ itStart + m_CTX };
 	std::vector<size_t>
-		x{ m_AllIds.begin() + start, m_AllIds.begin() + start + m_CTX },
-		y{ m_AllIds.begin() + start + 1, m_AllIds.begin() + start + m_CTX + 1 };
+		x{ itStart , itEnd },
+		y{ std::next(itStart), std::next(itEnd) };
 
 	auto const logits{ m_Model.forward(x) };
 	SetLoss(cross_entropy(logits, y));
 	m_Model.zero_grad();
-	auto const dLogits{ cross_entropy_backward(logits, y) };
-	m_Model.backward(dLogits);
+	m_Model.backward(cross_entropy_backward(logits, y));
 	m_Model.update((llm::scalar)m_Lcoo);
 
 	if (!(m_uStep % fast_mod))

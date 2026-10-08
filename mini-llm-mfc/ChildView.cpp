@@ -223,7 +223,7 @@ LRESULT CChildView::OnFastText(WPARAM wParam, LPARAM)
 
 	if (!(wParam % (20 * fast_mod)))
 		for (int i = 0; i < m_FastList.GetHeaderCtrl()->GetItemCount(); i++)
-			m_FastList.SetColumnWidth(i, LVSCW_AUTOSIZE);
+			m_FastList.SetColumnWidth(i, LVSCW_AUTOSIZE_USEHEADER);
 
 	auto loss{ m_pTh->GetLoss() };
 	m_LossData.insert(m_LossData.end(), loss.begin(), loss.end());
@@ -257,7 +257,7 @@ LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
 
 	if (!(wParam % (20 * slow_mod)))
 		for (int i = 0; i < m_SlowList.GetHeaderCtrl()->GetItemCount(); i++)
-			m_SlowList.SetColumnWidth(i, LVSCW_AUTOSIZE);
+			m_SlowList.SetColumnWidth(i, LVSCW_AUTOSIZE_USEHEADER);
 
 	return 0;
 }

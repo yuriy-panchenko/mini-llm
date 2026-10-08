@@ -47,8 +47,8 @@ private:
 	CString m_FastText, m_SlowText;
 	std::vector<double> m_Loss;
 
-	static std::mt19937 g_Rng;
-	static std::normal_distribution<llm::scalar> g_Dist;
+	std::mt19937 m_Rng;
+	std::normal_distribution<llm::scalar> m_Dist;
 };
 
 
