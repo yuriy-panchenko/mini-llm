@@ -1,0 +1,232 @@
+diff --git a/mini-llm-mfc/CWorkerThread.cpp b/mini-llm-mfc/CWorkerThread.cpp
+index 13bc07e..833b205 100644
+--- a/mini-llm-mfc/CWorkerThread.cpp
++++ b/mini-llm-mfc/CWorkerThread.cpp
+@@ -8,6 +8,7 @@
+ #include <fstream>
+ #include <algorithm>
+ #include <cmath>
++#include <limits>
+ #include <numeric>
+ #include <random>
+ #include "CNetSettingsDlg.h"
+@@ -70,6 +71,13 @@ void CWorkerThread::Init(CChildView* pView, CNetSettingsDlg const& dlg)
+ 	m_SampleIds = m_Tok.encode(m_Sample);
+ 	m_AllIds = m_Tok.encode(dlg.m_Corpus);
+ 	assert(m_AllIds.size() > dlg.m_CTX + 1);   // guards the subtraction below
++
++	// Hold out the last 5% of the corpus (never trained on) for validation loss.
++	// If either side would be shorter than one window, skip validation entirely.
++	size_t const valLen{ m_AllIds.size() / 20 };
++	m_TrainEnd = (valLen > m_CTX + 1 && m_AllIds.size() - valLen > m_CTX + 1)
++		? m_AllIds.size() - valLen
++		: m_AllIds.size();
+ }
+ 
+ CString CWorkerThread::GetText(BOOL isFast)
+@@ -84,6 +92,14 @@ std::vector<double> CWorkerThread::GetLoss()
+ 	return std::move(m_Loss);
+ }
+ 
++std::vector<double> CWorkerThread::GetVal()
++{
++	std::lock_guard _o{ m_Mtx };
++	std::vector<double> ret;
++	ret.swap(m_Val);
++	return ret;
++}
++
+ BOOL CWorkerThread::InitInstance()
+ {
+ 	PostThreadMessage(WM_NEXT_STEP, 0, 0);
+@@ -107,7 +123,7 @@ void CWorkerThread::OnNextStep(WPARAM, LPARAM)
+ 	ASSERT(m_pView);
+ 	ASSERT(m_AllIds.size() > m_CTX + 1);
+ 
+-	size_t const start{ m_Rng() % (m_AllIds.size() - m_CTX - 1) };
++	size_t const start{ m_Rng() % (m_TrainEnd - m_CTX - 1) };   // train region only
+ 	auto const itStart{ m_AllIds.begin() + start }, itEnd{ itStart + m_CTX };
+ 	std::vector<size_t>
+ 		x{ itStart , itEnd },
+@@ -126,6 +142,11 @@ void CWorkerThread::OnNextStep(WPARAM, LPARAM)
+ 	}
+ 	if (!(m_uStep % slow_mod))
+ 	{
++		if (auto const v{ EvalVal() }; !std::isnan(v))
++		{
++			std::lock_guard _o{ m_Mtx };
++			m_Val.push_back(v);
++		}
+ 		SetText(FALSE, generate(m_Sample, 60));
+ 		m_pView->PostMessage(WM_SLOW_FINISHED, m_uStep);
+ 	}
+@@ -134,6 +155,26 @@ void CWorkerThread::OnNextStep(WPARAM, LPARAM)
+ 		PostThreadMessage(WM_NEXT_STEP, ++m_uStep, 0);
+ }
+ 
++// Mean loss over a fixed set of evenly spaced held-out windows, so successive
++// evaluations are comparable. NaN when there is no validation region.
++double CWorkerThread::EvalVal()
++{
++	size_t const valLen{ m_AllIds.size() - m_TrainEnd };
++	if (valLen <= m_CTX + 1)
++		return std::numeric_limits<double>::quiet_NaN();
++
++	size_t const slots{ valLen - m_CTX - 1 };
++	size_t const n{ (std::min<size_t>)(16, slots) };
++	double sum{};
++	for (size_t i = 0; i < n; ++i)
++	{
++		auto const itStart{ m_AllIds.begin() + m_TrainEnd + i * slots / n }, itEnd{ itStart + m_CTX };
++		std::vector<size_t> x{ itStart, itEnd }, y{ std::next(itStart), std::next(itEnd) };
++		sum += cross_entropy(m_Model.forward(x), y);
++	}
++	return sum / static_cast<double>(n);
++}
++
+ std::string CWorkerThread::greedy_decode()
+ {
+ 	auto logits{ m_Model.forward({ m_SampleIds.begin(), m_SampleIds.end() }) };
+@@ -162,7 +203,7 @@ size_t CWorkerThread::sample_top_k(It first, It last)
+ 	std::vector<size_t> idx(logit.size());
+ 	std::iota(idx.begin(), idx.end(), size_t{ 0 });
+ 
+-	auto const k{ std::min(topK, idx.size()) };
++	auto const k{ (std::min)(topK, idx.size()) };
+ 	std::partial_sort(idx.begin(), idx.begin() + k, idx.end(),
+ 		[&](size_t a, size_t b) { return logit[a] > logit[b]; });
+ 
+diff --git a/mini-llm-mfc/CWorkerThread.h b/mini-llm-mfc/CWorkerThread.h
+index f4bb14e..aa20be3 100644
+--- a/mini-llm-mfc/CWorkerThread.h
++++ b/mini-llm-mfc/CWorkerThread.h
+@@ -19,6 +19,7 @@ public:
+ 	void Init(CChildView* pView, CNetSettingsDlg const&);
+ 	CString GetText(BOOL isFast);
+ 	std::vector<double> GetLoss();
++	std::vector<double> GetVal();   // validation loss, one entry per slow_mod steps
+ 
+ public:
+ 	virtual BOOL InitInstance();
+@@ -30,6 +31,7 @@ protected:
+ 
+ private:
+ 	std::string greedy_decode();
++	double EvalVal();
+ 	std::string generate(std::string const& prompt, size_t maxNewTokens);
+ 	template<typename It> size_t sample_top_k(It first, It last);
+ 	void SetText(BOOL isFast, std::string&&);
+@@ -46,7 +48,8 @@ private:
+ 
+ 	std::mutex m_Mtx;
+ 	CString m_FastText, m_SlowText;
+-	std::vector<double> m_Loss;
++	std::vector<double> m_Loss, m_Val;
++	size_t m_TrainEnd{ 0 };   // ids [m_TrainEnd, end) are held out and never trained on
+ 
+ 	std::mt19937 m_Rng;
+ 	std::normal_distribution<llm::scalar> m_Dist;
+diff --git a/mini-llm-mfc/ChildView.cpp b/mini-llm-mfc/ChildView.cpp
+index 25fe46c..856facb 100644
+--- a/mini-llm-mfc/ChildView.cpp
++++ b/mini-llm-mfc/ChildView.cpp
+@@ -105,6 +105,9 @@ void CChildView::OnPaint()
+ 				Min = .0;
+ 			CString s;
+ 			s.Format(_T("Max %.4f  Min %.4f  Count %I64u"), Max, Min, m_LossData.size());
++			s.AppendFormat(_T("  MA50 %.4f"), m_MA50.back());
++			if (!m_ValData.empty())
++				s.AppendFormat(_T("  Val %.4f"), m_ValData.back());
+ 			CFont font;
+ 			font.CreatePointFont(90, _T("Consolas"));
+ 			memDC.SelectObject(font);
+@@ -135,6 +138,46 @@ void CChildView::OnPaint()
+ 					memDC.LineTo(pnt);
+ 				}
+ 			}
++
++			// Overlays share the raw curve's x/y mapping: white = MA50, green = validation.
++			bool const scaled{ m_bShowAll && bCompressed };
++			auto const from{ static_cast<size_t>(std::distance(m_LossData.cbegin(), itFrom)) };
++			auto const toX{ [&](size_t i) {
++				return scaled ? int(double(m_rChart.Width()) * (i - from) / m_LossData.size())
++				              : int(i - from); } };
++			auto const toY{ [&](double v) {
++				auto const y{ int(m_rChart.Height() * (Max - v) / (Max - Min)) };
++				return (std::max)(0, (std::min)(y, int(m_rChart.Height()) - 1)); } };
++
++			if (m_bShowMA50)
++			{
++				CPen penMA{ PS_SOLID, 2, RGB(240, 240, 240) };
++				memDC.SelectObject(penMA);
++				memDC.MoveTo(toX(from), toY(m_MA50[from]));
++				for (size_t i = from + 1; i < m_MA50.size(); ++i)
++					memDC.LineTo(toX(i), toY(m_MA50[i]));
++				memDC.SelectObject(pen);   // deselect before penMA is destroyed
++			}
++
++			if (!m_ValData.empty())
++			{
++				CPen penVal{ PS_SOLID, 2, RGB(60, 220, 60) };
++				memDC.SelectObject(penVal);
++				bool started{ false };
++				for (size_t k = 0; k < m_ValData.size(); ++k)
++				{
++					auto const step{ k * slow_mod };
++					if (step < from)
++						continue;
++					CPoint const p{ toX(step), toY(m_ValData[k]) };
++					if (started)
++						memDC.LineTo(p);
++					else
++						memDC.MoveTo(p);
++					started = true;
++				}
++				memDC.SelectObject(pen);
++			}
+ 		}
+ 	}
+ 
+@@ -225,8 +268,16 @@ LRESULT CChildView::OnFastText(WPARAM wParam, LPARAM)
+ 		for (int i = 0; i < m_FastList.GetHeaderCtrl()->GetItemCount(); i++)
+ 			m_FastList.SetColumnWidth(i, LVSCW_AUTOSIZE_USEHEADER);
+ 
+-	auto loss{ m_pTh->GetLoss() };
+-	m_LossData.insert(m_LossData.end(), loss.begin(), loss.end());
++	constexpr size_t maWindow{ 50 };
++	for (double const l : m_pTh->GetLoss())
++	{
++		m_LossData.push_back(l);
++		m_MA50Sum += l;
++		auto const n{ m_LossData.size() };
++		if (n > maWindow)
++			m_MA50Sum -= m_LossData[n - maWindow - 1];
++		m_MA50.push_back(m_MA50Sum / static_cast<double>((std::min)(n, maWindow)));
++	}
+ 	InvalidateRect(m_rChart);
+ 
+ 	return 0;
+@@ -245,6 +296,9 @@ LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
+ 	item.pszText = (LPTSTR)(LPCTSTR)s;
+ 	auto const index{ m_SlowList.InsertItem(&item) };
+ 
++	for (double const v : m_pTh->GetVal())
++		m_ValData.push_back(v);
++
+ 	++item.iSubItem;
+ 	s = m_pTh->GetText(FALSE);
+ 	s.Replace(_T("\n"), _T("\\n"));
+diff --git a/mini-llm-mfc/ChildView.h b/mini-llm-mfc/ChildView.h
+index 0cf0c08..85a688f 100644
+--- a/mini-llm-mfc/ChildView.h
++++ b/mini-llm-mfc/ChildView.h
+@@ -52,7 +52,8 @@ private:
+ 	CRect m_rCanvas, m_rChart;
+ 	CListCtrl m_FastList, m_SlowList;
+ 	CWorkerThread* m_pTh;
+-	std::vector<double> m_LossData,m_MA50;
++	std::vector<double> m_LossData, m_MA50, m_ValData;   // m_MA50[i] pairs with m_LossData[i]; m_ValData[i] is step i*slow_mod
++	double m_MA50Sum{ 0 };
+ 	BOOL m_bShowAll,m_bShowMA50,m_bShowZero;
+ public:
+ 	afx_msg void OnContextMenu(CWnd* /*pWnd*/, CPoint /*point*/);

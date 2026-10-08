@@ -31,6 +31,7 @@ protected:
 private:
 	std::string greedy_decode();
 	std::string generate(std::string const& prompt, size_t maxNewTokens);
+	template<typename It> size_t sample_top_k(It first, It last);
 	void SetText(BOOL isFast, std::string&&);
 	void SetLoss(double);
 

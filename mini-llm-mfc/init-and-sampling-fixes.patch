@@ -1,0 +1,100 @@
+diff --git a/mini-llm-mfc/CWorkerThread.cpp b/mini-llm-mfc/CWorkerThread.cpp
+index f0164b4..13bc07e 100644
+--- a/mini-llm-mfc/CWorkerThread.cpp
++++ b/mini-llm-mfc/CWorkerThread.cpp
+@@ -6,6 +6,10 @@
+ #include "CWorkerThread.h"
+ #include "ChildView.h"
+ #include <fstream>
++#include <algorithm>
++#include <cmath>
++#include <numeric>
++#include <random>
+ #include "CNetSettingsDlg.h"
+ 
+ // CWorkerThread
+@@ -42,21 +46,24 @@ void CWorkerThread::Init(CChildView* pView, CNetSettingsDlg const& dlg)
+ 		// copying it into every emplace_back() would give every layer (and every
+ 		// one of Wq/Wk/Wv/Wo within a layer) byte-identical starting weights.
+ 		MultiHeadAttention causalAttn{
+-			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model}.random(m_Rng, m_Dist) },
+-			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model}.random(m_Rng, m_Dist) },
+-			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model}.random(m_Rng, m_Dist) },
+-			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model}.random(m_Rng, m_Dist) },
++			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model} },
++			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model} },
++			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model} },
++			Linear{ Matrix{dlg.m_Model, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model} },
+ 			dlg.m_Heads, true };
+ 
+ 		body.emplace_back(
+ 			causalAttn,
+ 			RMSNorm{ Vector{dlg.m_Model, 1.f} },
+-			Linear{ Matrix{dlg.m_Model, d_ff}.xavier(m_Rng, m_Dist), Vector{d_ff}.random(m_Rng, m_Dist) },
+-			Linear{ Matrix{d_ff, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model}.random(m_Rng, m_Dist) },
++			Linear{ Matrix{dlg.m_Model, d_ff}.xavier(m_Rng, m_Dist), Vector{d_ff} },
++			Linear{ Matrix{d_ff, dlg.m_Model}.xavier(m_Rng, m_Dist), Vector{dlg.m_Model} },
+ 			RMSNorm{ Vector{dlg.m_Model, 1.f} });
+ 	}
+ 
+-	m_Model = { Embedding{ Matrix{dlg.m_VocabSize, dlg.m_Model}.xavier(m_Rng, m_Dist) },
++	// xavier() gives std sqrt(2/d_model) (~0.18 at d=64), which the sinusoidal PE (rms ~0.7)
++	// swamps. Rescale to std ~1 so token identity and position start on the same scale.
++	auto const embScale{ std::sqrt(2.f / static_cast<llm::scalar>(dlg.m_Model)) };
++	m_Model = { Embedding{ Matrix{dlg.m_VocabSize, dlg.m_Model}.xavier(m_Rng, m_Dist) / embScale },
+ 		std::move(body),Linear{ Matrix{dlg.m_Model, dlg.m_VocabSize}.xavier(m_Rng, m_Dist), Vector{dlg.m_VocabSize} } };
+ 
+ 	m_Sample = CStringToUtf8(dlg.m_Seed);
+@@ -143,6 +150,31 @@ std::string CWorkerThread::greedy_decode()
+ 	return m_Tok.decode(predicted);
+ }
+ 
++// Temperature + top-k sampling over one row of logits. Greedy argmax falls into the
++// first repetition loop it finds; sampling shows what the model has actually learned.
++template<typename It>
++size_t CWorkerThread::sample_top_k(It first, It last)
++{
++	constexpr size_t topK{ 40 };
++	constexpr llm::scalar temperature{ 0.8f };
++
++	std::vector<llm::scalar> logit(first, last);
++	std::vector<size_t> idx(logit.size());
++	std::iota(idx.begin(), idx.end(), size_t{ 0 });
++
++	auto const k{ std::min(topK, idx.size()) };
++	std::partial_sort(idx.begin(), idx.begin() + k, idx.end(),
++		[&](size_t a, size_t b) { return logit[a] > logit[b]; });
++
++	auto const maxLogit{ logit[idx[0]] };
++	std::vector<double> weight(k);
++	for (size_t i = 0; i < k; ++i)
++		weight[i] = std::exp((logit[idx[i]] - maxLogit) / temperature);
++
++	std::discrete_distribution<size_t> pick{ weight.begin(), weight.end() };
++	return idx[pick(m_Rng)];
++}
++
+ std::string CWorkerThread::generate(std::string const& prompt, size_t maxNewTokens)
+ {
+ 	std::vector<size_t> window;
+@@ -155,7 +187,7 @@ std::string CWorkerThread::generate(std::string const& prompt, size_t maxNewToke
+ 		std::vector<size_t> in(window.size() > m_CTX ? window.end() - m_CTX : window.begin(), window.end());
+ 		auto logits{ m_Model.forward(in) };
+ 		auto row{ logits.row(logits.rows() - 1) };
+-		auto next{ static_cast<size_t>(std::distance(row.begin(), std::max_element(row.begin(), row.end()))) };
++		auto const next{ sample_top_k(row.begin(), row.end()) };
+ 		window.push_back(next);
+ 		ret += m_Tok.decode({ static_cast<Tokenizer::TokenId>(next) });
+ 	}
+diff --git a/mini-llm-mfc/CWorkerThread.h b/mini-llm-mfc/CWorkerThread.h
+index 3c50198..f4bb14e 100644
+--- a/mini-llm-mfc/CWorkerThread.h
++++ b/mini-llm-mfc/CWorkerThread.h
+@@ -31,6 +31,7 @@ protected:
+ private:
+ 	std::string greedy_decode();
+ 	std::string generate(std::string const& prompt, size_t maxNewTokens);
++	template<typename It> size_t sample_top_k(It first, It last);
+ 	void SetText(BOOL isFast, std::string&&);
+ 	void SetLoss(double);
+ 
