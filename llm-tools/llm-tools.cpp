@@ -3,18 +3,29 @@
 
 #include <iostream>
 
-int main()
+using namespace std;
+
+void print_default()
 {
-    std::cout << "Hello World!\n";
+	cout << "\nuse: llm-tools [src] [dst] [flags]\n"
+		<< "\tsrc\t\t- path to file or folder (current by default) with .txt files\n"
+		<< "\tdst\t\t- destination folder path (current by default)\n"
+		<< "\t/norm\t\t- normalize whitespaces\n"
+		<< "\t/dna\t\t- open Genome code file (file is ignored by default)\n"
+		<< "\t/big\t\t- save combined and cleaned corpus to 'corpus.txt' file\n"
+		<< "\t/gutten\t- strip Guttenberg Library head and tail\n"
+		<< endl;
 }
 
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
-
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
+int main(int argc, char const* argv)
+{
+	/*
+	* Open single source file
+	* check if it is dna and should be ignored or used here
+	* remove Guttenberg Library blocks (front end end) if have to
+	* normalize if have to
+	* add to resulting string
+	* after last file save the result to 'corpus.txt' to folder (if applied)
+	*/
+	print_default();
+}
