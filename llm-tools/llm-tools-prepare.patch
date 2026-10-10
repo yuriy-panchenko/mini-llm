@@ -1,0 +1,703 @@
+diff --git a/GuttenbergLibrary/GuttenbergLibrary.cpp b/GuttenbergLibrary/GuttenbergLibrary.cpp
+index 8f95aab..b4ac219 100644
+--- a/GuttenbergLibrary/GuttenbergLibrary.cpp
++++ b/GuttenbergLibrary/GuttenbergLibrary.cpp
+@@ -30,37 +30,6 @@ namespace fs = filesystem;
+ 
+ Tokenizer gTok;
+ 
+-std::string GetGenome(std::ifstream& s)
+-{
+-	std::string const src{ istreambuf_iterator<char>{s}, istreambuf_iterator<char>{} };
+-	std::string ret;
+-	ret.reserve(src.length());
+-	bool found_start{ false };
+-
+-	for (auto ch : src)
+-		switch (ch)
+-		{
+-		case 'A':
+-		case 'C':
+-		case 'G':
+-		case 'T':
+-			ret.push_back(ch);
+-			found_start = ret.size() > 256;
+-			break;
+-		case '\n':
+-		case '\r':
+-			break;
+-		default:
+-			if (found_start)
+-				return ret;
+-			else if (ret.size() < 256ull)
+-				ret.clear();
+-			break;
+-		}
+-
+-	return ret;
+-}
+-
+ void save_as(fs::path fn)
+ {
+ 	cout << "\n\nSaving dictionary " << fn.filename() << "\t............\t";
+@@ -76,78 +45,11 @@ void save_as(fs::path fn)
+ }
+ 
+ 
+-// Replaces every occurrence of `from` with `to`, in place.
+-// Handles overlapping/empty-replacement cases safely by advancing past each replacement.
+-// Usage:
+-// replace_all(text, "Bot: ", "");      // remove
+-// replace_all(text, "Bot: ", "A: ");   // replace
+-void replace_all(std::string& s, const std::string& from, const std::string& to)
+-{
+-	if (from.empty()) return;
+-
+-	size_t pos = 0;
+-	while ((pos = s.find(from, pos)) != std::string::npos)
+-	{
+-		s.replace(pos, from.size(), to);
+-		pos += to.size();   // skip past what we just inserted
+-	}
+-}
+-
+-std::string replace_all_fast(const std::string& s, const std::string& from, const std::string& to)
+-{
+-	if (from.empty()) return s;
+-
+-	std::string out;
+-	out.reserve(s.size());
+-
+-	size_t pos = 0, hit;
+-	while ((hit = s.find(from, pos)) != std::string::npos)
+-	{
+-		out.append(s, pos, hit - pos);   // copy the untouched stretch
+-		out += to;
+-		pos = hit + from.size();
+-	}
+-	out.append(s, pos, std::string::npos);  // tail
+-	return out;
+-}
+-
+-// Keep only the book body between the START/END markers. Files without markers
+-// (e.g. conversations.txt) pass through unchanged.
+-std::string strip_gutenberg(std::string const& text)
+-{
+-	constexpr std::string_view startTag{ "*** START OF" }, endTag{ "*** END OF" };
+-
+-	std::string out;
+-	size_t pos{ 0 };
+-	bool found{ false };
+-	while (true)
+-	{
+-		auto const s{ text.find(startTag, pos) };
+-		if (s == std::string::npos)
+-			break;
+-		auto const bodyStart{ text.find('\n', s) };
+-		if (bodyStart == std::string::npos)
+-			break;
+-		auto const e{ text.find(endTag, bodyStart) };
+-		auto const bodyEnd{ e == std::string::npos ? text.size() : e };   // truncated file: keep the rest
+-
+-		out.append(text, bodyStart + 1, bodyEnd - bodyStart - 1);
+-		out += "\n\n";   // keep the last word of one book from fusing with the first of the next
+-		found = true;
+-
+-		if (e == std::string::npos)
+-			break;
+-		pos = e + endTag.size();
+-	}
+-	return found ? out : text;
+-}
+-
+ int main(int argc, char const* argv[])
+ {
+ 	// Default values
+ 	fs::path src_path;
+ 	fs::path dst_path = fs::current_path();   // current by default
+-	bool do_norm{ false }, do_dna{ false }, do_big{ false }, doGutten{ false };
+ 	size_t vocab_size = max_vocab_size;       // default max
+ 
+ 	// ------------------------------------------------------------------
+@@ -156,13 +58,9 @@ int main(int argc, char const* argv[])
+ 	if (argc == 1)
+ 	{
+ 		cout << "\nuse: gutlib src [dst] [flags]\n"
+-			<< "\tsrc\t\t- path to file or folder with .txt files\n"
++			<< "\tsrc\t\t- path to ONE text file, already prepared by llm-tools\n"
+ 			<< "\tdst\t\t- destination folder path (current by default)\n"
+-			<< "\t/norm\t\t- normalize whitespaces\n"
+-			<< "\t/dna\t\t- open file as Genome file\n"
+-			<< "\t/big\t\t- save combined and cleaned corpus to corpus.txt file\n"
+ 			<< "\t/size=1024\t- max vocabulary size (default is " << max_vocab_size << ")\n"
+-			<< "\t/gutten\t- strip Guttenberg Library head and tail\n"
+ 			<< endl;
+ 		return EXIT_SUCCESS;
+ 	}
+@@ -178,15 +76,7 @@ int main(int argc, char const* argv[])
+ 		{
+ 			string flag{ std::next(arg.begin()),arg.end() };
+ 			std::transform(flag.begin(), flag.end(), flag.begin(), [](char a) {return std::tolower(a); });
+-			if (flag == "norm")
+-				do_norm = true;
+-			else if (flag == "dna")
+-				do_dna = true;
+-			else if (flag == "big")
+-				do_big = true;
+-			else if (flag == "gutten")
+-				doGutten = true;
+-			else if (!flag.rfind("size=", 0))
++			if (!flag.rfind("size=", 0))
+ 			{
+ 				// Parse /size=N or -size=N
+ 				string value = flag.substr(flag.find('=') + 1);
+@@ -218,7 +108,7 @@ int main(int argc, char const* argv[])
+ 	// Assign positional arguments
+ 	if (positional.empty())
+ 	{
+-		cerr << "Error: source path (src) is required.\n";
++		cerr << "Error: source file (src) is required.\n";
+ 		return EXIT_FAILURE;
+ 	}
+ 
+@@ -233,6 +123,13 @@ int main(int argc, char const* argv[])
+ 		return EXIT_FAILURE;
+ 	}
+ 
++	if (!fs::is_regular_file(src_path))
++	{
++		cerr << "Error: gutlib expects ONE prepared text file, not a folder: " << src_path << "\n"
++			<< "Prepare the corpus first:  llm-tools <src> <dst> /big [/norm] [/gutten]\n";
++		return EXIT_FAILURE;
++	}
++
+ 	if (!fs::exists(dst_path))
+ 	{
+ 		cerr << "Destination folder does not exist. Creating: " << dst_path << endl;
+@@ -245,75 +142,14 @@ int main(int argc, char const* argv[])
+ 	cout << "=== Gutenberg Library Tokenizer ===\n"
+ 		<< "Source      : " << src_path << "\n"
+ 		<< "Destination : " << dst_path << "\n"
+-		<< "Normalize   : " << (do_norm ? "yes" : "no") << "\n"
+-		<< "DNA mode    : " << (do_dna ? "yes" : "no") << "\n"
+-		<< "Del Gutten  : " << (doGutten ? "yes" : "no") << "\n"
+-		<< "Save corpus : " << (do_big ? "yes" : "no") << "\n"
+ 		<< "Vocab size  : " << vocab_size << " (0x" << hex << vocab_size << dec << ")\n"
+ 		<< "===================================\n" << endl;
+ 
+ 	// ------------------------------------------------------------------
+-	// Load corpus
++	// Load corpus (one file, already prepared)
+ 	// ------------------------------------------------------------------
+-	std::string corpus;
+-
+-	if (do_dna)
+-	{
+-		// Treat as single Genome file
+-		if (!fs::is_regular_file(src_path))
+-		{
+-			cerr << "Error: /dna expects a single file, not a directory.\n";
+-			return EXIT_FAILURE;
+-		}
+-		std::ifstream fs{ src_path };
+-		if (!fs)
+-		{
+-			cerr << "Error: cannot open genome file: " << src_path << endl;
+-			return EXIT_FAILURE;
+-		}
+-		corpus = GetGenome(fs);
+-		cout << "Genome sequence length: " << corpus.size() << " bases\n";
+-	}
+-	else
+-	{
+-		// Normal text mode: file or folder of .txt files
+-		if (fs::is_directory(src_path))
+-		{
+-			corpus = llm::read_all_files(src_path.string());
+-		}
+-		else
+-		{
+-			corpus = llm::read_file(src_path.string());
+-		}
+-	}
+-
+-	if (do_norm)
+-	{
+-		corpus = llm::normalize_whitespace(corpus);
+-		cout << "Whitespace normalized.\n";
+-	}
+-
+-	if (doGutten)
+-	{
+-		auto const sizeb4{ corpus.length() };
+-		corpus = strip_gutenberg(corpus);
+-		cout << "Guttenberg headers removed. Freed " <<  sizeb4 - corpus.size() << " chars\n";
+-	}
+-
+-	if (do_big)
+-	{
+-		fs::path corpus_file = dst_path / "corpus.txt";
+-		std::ofstream out{ corpus_file };
+-		if (out)
+-		{
+-			out << corpus;
+-			cout << "Combined corpus saved to: " << corpus_file << "\n";
+-		}
+-		else
+-		{
+-			cerr << "Warning: could not write corpus.txt\n";
+-		}
+-	}
++	std::string const corpus{ llm::read_file(src_path) };
++	cout << "Corpus: " << corpus.size() << " chars\n" << endl;
+ 
+ 	// ------------------------------------------------------------------
+ 	// Training loop (unchanged)
+diff --git a/llm-tools/llm-tools.cpp b/llm-tools/llm-tools.cpp
+index 64253f6..569eb1a 100644
+--- a/llm-tools/llm-tools.cpp
++++ b/llm-tools/llm-tools.cpp
+@@ -1,9 +1,27 @@
+-// llm-tools.cpp : This file contains the 'main' function. Program execution begins and ends there.
++// llm-tools.cpp : prepares a text corpus (for gutlib / training).
++//
++// Per source file: genome files are ignored (or extracted with /dna), Gutenberg
++// head/tail is stripped (/gutten), whitespace is normalized (/norm), and the result
++// is appended to the combined corpus, saved as 'corpus.txt' with /big.
+ //
+ 
++#include <algorithm>
++#include <cctype>
++#include <filesystem>
++#include <fstream>
+ #include <iostream>
++#include <stdexcept>
++#include <string>
++#include <vector>
++#include "text_ops.h"
+ 
+ using namespace std;
++namespace fs = filesystem;
++
++struct Options
++{
++	bool norm{ false }, dna{ false }, big{ false }, gutten{ false };
++};
+ 
+ void print_default()
+ {
+@@ -17,15 +35,223 @@ void print_default()
+ 		<< endl;
+ }
+ 
+-int main(int argc, char const* argv)
++// Binary read: no newline translation, so what is processed is what is on disk.
++string read_file(fs::path const& fn)
++{
++	ifstream file{ fn, ios::binary };
++	if (!file)
++		throw runtime_error("Cannot open file: " + fn.string());
++	return { istreambuf_iterator<char>{file}, istreambuf_iterator<char>{} };
++}
++
++// A folder gives its .txt files in a fixed (sorted) order, a file gives itself.
++vector<fs::path> collect_files(fs::path const& src)
++{
++	vector<fs::path> files;
++	if (fs::is_directory(src))
++	{
++		for (auto const& en : fs::directory_iterator{ src })
++			if (en.is_regular_file() && en.path().extension() == ".txt")
++				files.push_back(en.path());
++		sort(files.begin(), files.end());   // directory_iterator order is unspecified
++	}
++	else
++		files.push_back(src);
++	return files;
++}
++
++int main(int argc, char const* argv[])
+ {
+-	/*
+-	* Open single source file
+-	* check if it is dna and should be ignored or used here
+-	* remove Guttenberg Library blocks (front end end) if have to
+-	* normalize if have to
+-	* add to resulting string
+-	* after last file save the result to 'corpus.txt' to folder (if applied)
+-	*/
+-	print_default();
++	if (argc == 1)
++	{
++		print_default();
++		return EXIT_SUCCESS;
++	}
++
++	// ------------------------------------------------------------------
++	// Command-line parsing
++	// ------------------------------------------------------------------
++	Options opt;
++	vector<string> positional;
++	for (int i = 1; i < argc; ++i)
++	{
++		string const arg{ argv[i] };
++		if (arg.empty())
++			continue;
++
++		if (arg.front() == '/' || arg.front() == '-')
++		{
++			string flag{ next(arg.begin()), arg.end() };
++			transform(flag.begin(), flag.end(), flag.begin(), [](unsigned char a) { return static_cast<char>(tolower(a)); });
++			if (flag == "norm")
++				opt.norm = true;
++			else if (flag == "dna")
++				opt.dna = true;
++			else if (flag == "big")
++				opt.big = true;
++			else if (flag == "gutten")
++				opt.gutten = true;
++			else if (flag == "?" || flag == "h" || flag == "help")
++			{
++				print_default();
++				return EXIT_SUCCESS;
++			}
++			else
++			{
++				cerr << "Unknown flag: " << arg << endl;
++				return EXIT_FAILURE;
++			}
++		}
++		else
++			positional.push_back(arg);
++	}
++
++	if (positional.size() > 2)
++	{
++		cerr << "Error: too many arguments (expected [src] [dst] [flags]).\n";
++		return EXIT_FAILURE;
++	}
++
++	fs::path const src{ positional.size() >= 1 ? fs::path{ positional[0] } : fs::current_path() };
++	fs::path const dst{ positional.size() >= 2 ? fs::path{ positional[1] } : fs::current_path() };
++	fs::path const corpusPath{ dst / "corpus.txt" };
++
++	if (!fs::exists(src))
++	{
++		cerr << "Error: source path does not exist: " << src << endl;
++		return EXIT_FAILURE;
++	}
++
++	cout << "=== llm-tools ===\n"
++		<< "Source      : " << src << "\n"
++		<< "Destination : " << dst << "\n"
++		<< "Normalize   : " << (opt.norm ? "yes" : "no") << "\n"
++		<< "DNA files   : " << (opt.dna ? "used" : "ignored") << "\n"
++		<< "Del Gutten  : " << (opt.gutten ? "yes" : "no") << "\n"
++		<< "Save corpus : " << (opt.big ? "yes" : "no") << "\n"
++		<< "=================\n" << endl;
++
++	auto files{ collect_files(src) };
++
++	// A corpus.txt left by a previous run must not become an input of this one.
++	size_t skippedOld{ 0 };
++	if (opt.big && fs::exists(corpusPath))
++		skippedOld = erase_if(files, [&](fs::path const& f) { return fs::equivalent(f, corpusPath); });
++
++	ofstream out;
++	if (opt.big)
++	{
++		fs::create_directories(dst);
++		out.open(corpusPath, ios::binary | ios::trunc);
++		if (!out)
++		{
++			cerr << "Error: cannot write " << corpusPath << endl;
++			return EXIT_FAILURE;
++		}
++	}
++
++	// ------------------------------------------------------------------
++	// One file at a time: open -> dna? -> strip Gutenberg -> normalize -> append
++	// ------------------------------------------------------------------
++	size_t index{ 0 }, used{ 0 }, failed{ 0 }, dnaIgnored{ 0 }, noMarkers{ 0 }, emptied{ 0 };
++	size_t charsIn{ 0 }, charsOut{ 0 };
++
++	for (auto const& f : files)
++	{
++		cout << ++index << '\t' << f.filename();
++
++		string text;
++		try
++		{
++			text = read_file(f);
++		}
++		catch (exception const&)
++		{
++			cout << "\tFailed\n";
++			++failed;
++			continue;
++		}
++		auto const sizeIn{ text.size() };
++		charsIn += sizeIn;
++
++		if (text.empty())
++		{
++			cout << "\tempty\n";
++			++emptied;
++			continue;
++		}
++
++		bool const isDna{ looks_like_dna(text) };
++		if (isDna && !opt.dna)
++		{
++			cout << '\t' << sizeIn << "\tgenome, ignored\n";
++			++dnaIgnored;
++			continue;
++		}
++
++		string note;
++		if (isDna)
++		{
++			text = extract_genome(text);
++			note = "genome";
++		}
++		else
++		{
++			if (opt.gutten && !strip_gutenberg(text))
++			{
++				++noMarkers;
++				note = "no Gutenberg markers, kept as is";
++			}
++			if (opt.norm)
++				text = normalize_whitespace(text);
++		}
++
++		cout << '\t' << sizeIn << " -> " << text.size() << (note.empty() ? "" : "\t") << note << '\n';
++
++		if (text.empty())
++		{
++			++emptied;
++			continue;
++		}
++
++		// Files must not fuse: end every file with a blank line.
++		if (!text.ends_with("\n\n"))
++			text += text.ends_with('\n') ? "\n" : "\n\n";
++
++		if (opt.big)
++			out.write(text.data(), static_cast<streamsize>(text.size()));
++		charsOut += text.size();
++		++used;
++	}
++
++	// ------------------------------------------------------------------
++	// Summary
++	// ------------------------------------------------------------------
++	cout << "\n=== Summary ===\n"
++		<< "Files found      : " << files.size() << "\n"
++		<< "Files used       : " << used << "\n"
++		<< "Genome ignored   : " << dnaIgnored << "\n"
++		<< "Failed to read   : " << failed << "\n"
++		<< "Empty after prep : " << emptied << "\n";
++	if (opt.gutten)
++		cout << "No markers       : " << noMarkers << "\n";
++	if (skippedOld)
++		cout << "Skipped input    : previous corpus.txt\n";
++	cout << "Characters in    : " << charsIn << "\n"
++		<< "Characters out   : " << charsOut << "\n";
++
++	if (!opt.big)
++	{
++		cout << "Nothing saved (use /big to write corpus.txt)\n" << endl;
++		return EXIT_SUCCESS;
++	}
++
++	out.close();
++	if (!out)
++	{
++		cerr << "Error: writing " << corpusPath << " failed.\n";
++		return EXIT_FAILURE;
++	}
++	cout << "Corpus saved to  : " << corpusPath << "\n" << endl;
++	return EXIT_SUCCESS;
+ }
+diff --git a/llm-tools/llm-tools.vcxproj b/llm-tools/llm-tools.vcxproj
+index 41de9c3..c1b7764 100644
+--- a/llm-tools/llm-tools.vcxproj
++++ b/llm-tools/llm-tools.vcxproj
+@@ -141,6 +141,9 @@
+   <ItemGroup>
+     <ClCompile Include="llm-tools.cpp" />
+   </ItemGroup>
++  <ItemGroup>
++    <ClInclude Include="text_ops.h" />
++  </ItemGroup>
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+   <ImportGroup Label="ExtensionTargets">
+   </ImportGroup>
+diff --git a/llm-tools/llm-tools.vcxproj.filters b/llm-tools/llm-tools.vcxproj.filters
+index 4ed5314..76d97d6 100644
+--- a/llm-tools/llm-tools.vcxproj.filters
++++ b/llm-tools/llm-tools.vcxproj.filters
+@@ -19,4 +19,9 @@
+       <Filter>Source Files</Filter>
+     </ClCompile>
+   </ItemGroup>
++  <ItemGroup>
++    <ClInclude Include="text_ops.h">
++      <Filter>Header Files</Filter>
++    </ClInclude>
++  </ItemGroup>
+ </Project>
+\ No newline at end of file
+diff --git a/llm-tools/text_ops.h b/llm-tools/text_ops.h
+new file mode 100644
+index 0000000..2bb1e69
+--- /dev/null
++++ b/llm-tools/text_ops.h
+@@ -0,0 +1,146 @@
++#pragma once
++#include <cctype>
++#include <string>
++#include <string_view>
++#include <utility>
++
++// Pure text-preparation functions used by llm-tools (no state, no I/O).
++
++// Strips CR, collapses a lone '\n' (mid-paragraph line wrap) to a space,
++// collapses a run of 2+ '\n's (real paragraph break) down to one '\n'.
++inline std::string normalize_whitespace(std::string const& text)
++{
++	std::string out;
++	out.reserve(text.size());
++
++	size_t runLen{ 0 };   // length of the '\n' run currently being counted
++
++	for (char ch : text)
++	{
++		if (ch == '\r')
++			continue;
++
++		if (ch == '\n')
++		{
++			++runLen;
++			continue;
++		}
++
++		if (runLen > 0)
++		{
++			out.push_back(runLen > 1 ? '\n' : ' ');
++			runLen = 0;
++		}
++		out.push_back(ch);
++	}
++
++	if (runLen > 0)
++		out.push_back(runLen > 1 ? '\n' : ' ');
++
++	return out;
++}
++
++// Keeps only the book body between the START/END markers, in place.
++// Returns true if at least one START marker was found. A file without markers
++// (e.g. conversations.txt) is left unchanged and false is returned.
++// Must run BEFORE normalize_whitespace: it looks for the end of the marker line.
++inline bool strip_gutenberg(std::string& text)
++{
++	constexpr std::string_view startTag{ "*** START OF" }, endTag{ "*** END OF" };
++
++	std::string out;
++	size_t pos{ 0 };
++	bool found{ false };
++	while (true)
++	{
++		auto const s{ text.find(startTag, pos) };
++		if (s == std::string::npos)
++			break;
++		auto const bodyStart{ text.find('\n', s) };
++		if (bodyStart == std::string::npos)
++			break;
++		auto const e{ text.find(endTag, bodyStart) };
++		auto const bodyEnd{ e == std::string::npos ? text.size() : e };   // truncated file: keep the rest
++
++		auto first{ bodyStart + 1 };
++		while (first < bodyEnd && std::isspace(static_cast<unsigned char>(text[first])))   // blank lines after the marker
++			++first;
++
++		out.append(text, first, bodyEnd - first);
++		out += "\n\n";   // keep the last word of one book from fusing with the first of the next
++		found = true;
++
++		if (e == std::string::npos)
++			break;
++		pos = e + endTag.size();
++	}
++
++	if (found)
++		text = std::move(out);
++	return found;
++}
++
++// Heuristic: does the file look like a raw nucleotide sequence? Looks at the first 64K
++// non-blank characters (FASTA '>' / ';' header lines skipped) and requires >=95% of them
++// to be uppercase A, C, G, T or N. Same alphabet extract_genome() works with: soft-masked
++// (lowercase) sequences are NOT recognized and would be treated as text.
++inline bool looks_like_dna(std::string const& text)
++{
++	constexpr size_t kSample{ 1 << 16 }, kMinChars{ 256 };
++
++	size_t seen{ 0 }, bases{ 0 }, pos{ 0 };
++	while (pos < text.size() && seen < kSample)
++	{
++		auto eol{ text.find('\n', pos) };
++		if (eol == std::string::npos)
++			eol = text.size();
++
++		if (text[pos] != '>' && text[pos] != ';')
++			for (size_t i{ pos }; i < eol && seen < kSample; ++i)
++			{
++				char const ch{ text[i] };
++				if (ch == '\r' || ch == ' ' || ch == '\t')
++					continue;
++				++seen;
++				if (ch == 'A' || ch == 'C' || ch == 'G' || ch == 'T' || ch == 'N')
++					++bases;
++			}
++
++		pos = eol + 1;
++	}
++
++	return seen >= kMinChars && bases * 100 >= seen * 95;
++}
++
++// Extracts the first long run of A/C/G/T (line breaks ignored) from a genome file,
++// dropping any header before it. Stops at the first foreign character after the run
++// (an 'N' gap or a lowercase base ends the sequence).
++inline std::string extract_genome(std::string const& src)
++{
++	std::string ret;
++	ret.reserve(src.length());
++	bool found_start{ false };
++
++	for (auto ch : src)
++		switch (ch)
++		{
++		case 'A':
++		case 'C':
++		case 'G':
++		case 'T':
++			ret.push_back(ch);
++			found_start = ret.size() > 256;
++			break;
++		case '\n':
++		case '\r':
++			break;
++		default:
++			if (found_start)
++				return ret;
++			else if (ret.size() < 256ull)
++				ret.clear();
++			break;
++		}
++
++	return ret;
++}

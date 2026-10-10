@@ -1,0 +1,153 @@
+diff --git a/llm-tools/llm-tools.cpp b/llm-tools/llm-tools.cpp
+index cd51a5b..7c7dd4c 100644
+--- a/llm-tools/llm-tools.cpp
++++ b/llm-tools/llm-tools.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include <algorithm>
+ #include <cctype>
++#include <cstdio>
+ #include <filesystem>
+ #include <fstream>
+ #include <iostream>
+@@ -22,6 +23,7 @@ namespace fs = filesystem;
+ struct Options
+ {
+ 	bool norm{ false }, dna{ false }, big{ false }, gutten{ false }, autoCut{ false };
++	double maxDigits{ 0 };   // /maxdigits=N: skip files with more than N% digits (0 = off)
+ 	size_t autoMin{ 0 };   // /auto=N: a line must repeat in N files to be boilerplate (0 = automatic)
+ };
+ 
+@@ -36,9 +38,19 @@ void print_default()
+ 		<< "\t/gutten\t- strip Guttenberg Library head and tail\n"
+ 		<< "\t/auto[=N]\t- find head/tail blocks repeated across files (any version) and cut them;\n"
+ 		<< "\t\t\t  N = in how many files a line must repeat (default 1% of files, at least 3)\n"
++		<< "\t/maxdigits=N\t- skip files with more than N% digits (tables, number runs); the share is\n"
++		<< "\t\t\t  shown for every file\n"
+ 		<< endl;
+ }
+ 
++// "12.3%"
++string pct_str(double pct)
++{
++	char buf[32];
++	snprintf(buf, sizeof buf, "%.1f%%", pct);
++	return buf;
++}
++
+ // Binary read: no newline translation, so what is processed is what is on disk.
+ string read_file(fs::path const& fn)
+ {
+@@ -130,6 +142,22 @@ int main(int argc, char const* argv[])
+ 				opt.big = true;
+ 			else if (flag == "gutten")
+ 				opt.gutten = true;
++			else if (flag.rfind("maxdigits=", 0) == 0)
++			{
++				try
++				{
++					opt.maxDigits = stod(flag.substr(10));
++				}
++				catch (...)
++				{
++					opt.maxDigits = 0;
++				}
++				if (!(opt.maxDigits > 0 && opt.maxDigits <= 100))
++				{
++					cerr << "Error: /maxdigits needs a value in (0, 100]: " << arg << endl;
++					return EXIT_FAILURE;
++				}
++			}
+ 			else if (flag == "auto")
+ 				opt.autoCut = true;
+ 			else if (flag.rfind("auto=", 0) == 0)
+@@ -187,6 +215,7 @@ int main(int argc, char const* argv[])
+ 		<< "DNA files   : " << (opt.dna ? "used" : "ignored") << "\n"
+ 		<< "Del Gutten  : " << (opt.gutten ? "yes" : "no") << "\n"
+ 		<< "Auto head/tail: " << (opt.autoCut ? "yes" : "no") << "\n"
++		<< "Max digits  : " << (opt.maxDigits > 0 ? pct_str(opt.maxDigits) : "off") << "\n"
+ 		<< "Save corpus : " << (opt.big ? "yes" : "no") << "\n"
+ 		<< "=================\n" << endl;
+ 
+@@ -245,6 +274,8 @@ int main(int argc, char const* argv[])
+ 	// ------------------------------------------------------------------
+ 	size_t index{ 0 }, used{ 0 }, failed{ 0 }, dnaIgnored{ 0 }, noMarkers{ 0 }, emptied{ 0 };
+ 	size_t charsIn{ 0 }, charsOut{ 0 };
++	size_t digitSkipped{ 0 }, digitSkippedChars{ 0 };
++	vector<pair<fs::path, double>> digitList;
+ 	size_t autoHeadFiles{ 0 }, autoTailFiles{ 0 }, autoHeadChars{ 0 }, autoTailChars{ 0 };
+ 
+ 	for (auto const& f : files)
+@@ -313,10 +344,27 @@ int main(int argc, char const* argv[])
+ 		cout << '\t' << text.size() << " (" << delta_str(sizeIn, text.size()) << ")";
+ 		if (opt.autoCut && !isDna)
+ 			cout << "\thead -" << headCut << ", tail -" << tailCut;
++
++		double const digits{ isDna ? 0.0 : digit_share(text) };
++		if (!isDna)
++			cout << '\t' << pct_str(digits) << " digits";
+ 		if (!note.empty())
+ 			cout << '\t' << note;
++
++		bool const tooManyDigits{ opt.maxDigits > 0 && digits > opt.maxDigits };
++		if (tooManyDigits)
++			cout << "\tSKIPPED: too many digits";
+ 		cout << '\n';
+ 
++		if (tooManyDigits)
++		{
++			charsIn -= sizeIn;   // not part of the corpus, so not a "loss" either
++			digitSkippedChars += sizeIn;
++			++digitSkipped;
++			digitList.emplace_back(f.filename(), digits);
++			continue;
++		}
++
+ 		if (text.empty())
+ 		{
+ 			++emptied;
+@@ -346,12 +394,17 @@ int main(int argc, char const* argv[])
+ 		cout << "No markers       : " << noMarkers << "\n";
+ 	if (skippedOld)
+ 		cout << "Skipped input    : previous corpus.txt\n";
++	if (opt.maxDigits > 0)
++		cout << "Skipped (digits) : " << digitSkipped << " files, " << digitSkippedChars << " chars\n";
+ 	if (opt.autoCut)
+ 		cout << "Auto cut head    : " << autoHeadFiles << " files, " << autoHeadChars << " chars\n"
+ 		<< "Auto cut tail    : " << autoTailFiles << " files, " << autoTailChars << " chars\n";
+ 	cout << "Characters in    : " << charsIn << "\n"
+ 		<< "Characters out   : " << charsOut << " (" << delta_str(charsIn, charsOut) << ", file separators included)\n";
+ 
++	for (auto const& [name, pct] : digitList)
++		cout << "\tskipped " << name << "\t" << pct_str(pct) << " digits\n";
++
+ 	if (!opt.big)
+ 	{
+ 		cout << "Nothing saved (use /big to write corpus.txt)\n" << endl;
+diff --git a/llm-tools/text_ops.h b/llm-tools/text_ops.h
+index 94e06f4..63767d3 100644
+--- a/llm-tools/text_ops.h
++++ b/llm-tools/text_ops.h
+@@ -92,6 +92,22 @@ inline bool strip_gutenberg(std::string& text)
+ 	return true;
+ }
+ 
++// Share of digits among the non-blank characters, in percent (0 for an empty text).
++// Prose sits well below 1%; tables, digit expansions and page-number runs are far above.
++inline double digit_share(std::string const& text)
++{
++	size_t digits{ 0 }, chars{ 0 };
++	for (char const ch : text)
++	{
++		if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\v' || ch == '\f')
++			continue;
++		++chars;
++		if (ch >= '0' && ch <= '9')
++			++digits;
++	}
++	return chars ? 100.0 * static_cast<double>(digits) / static_cast<double>(chars) : 0.0;
++}
++
+ // Heuristic: does the file look like a raw nucleotide sequence? Looks at the first 64K
+ // non-blank characters (FASTA '>' / ';' header lines skipped) and requires >=95% of them
+ // to be uppercase A, C, G, T or N. Same alphabet extract_genome() works with: soft-masked

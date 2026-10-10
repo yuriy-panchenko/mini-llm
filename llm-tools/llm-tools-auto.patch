@@ -1,0 +1,438 @@
+diff --git a/llm-tools/llm-tools.cpp b/llm-tools/llm-tools.cpp
+index 569eb1a..cd51a5b 100644
+--- a/llm-tools/llm-tools.cpp
++++ b/llm-tools/llm-tools.cpp
+@@ -1,8 +1,9 @@
+ // llm-tools.cpp : prepares a text corpus (for gutlib / training).
+ //
+-// Per source file: genome files are ignored (or extracted with /dna), Gutenberg
+-// head/tail is stripped (/gutten), whitespace is normalized (/norm), and the result
+-// is appended to the combined corpus, saved as 'corpus.txt' with /big.
++// Per source file: genome files are ignored (or extracted with /dna), repeated head/tail
++// blocks are cut (/auto), Gutenberg head/tail is stripped (/gutten), whitespace is
++// normalized (/norm), and the result is appended to the combined corpus, saved as
++// 'corpus.txt' with /big.
+ //
+ 
+ #include <algorithm>
+@@ -20,7 +21,8 @@ namespace fs = filesystem;
+ 
+ struct Options
+ {
+-	bool norm{ false }, dna{ false }, big{ false }, gutten{ false };
++	bool norm{ false }, dna{ false }, big{ false }, gutten{ false }, autoCut{ false };
++	size_t autoMin{ 0 };   // /auto=N: a line must repeat in N files to be boilerplate (0 = automatic)
+ };
+ 
+ void print_default()
+@@ -32,6 +34,8 @@ void print_default()
+ 		<< "\t/dna\t\t- open Genome code file (file is ignored by default)\n"
+ 		<< "\t/big\t\t- save combined and cleaned corpus to 'corpus.txt' file\n"
+ 		<< "\t/gutten\t- strip Guttenberg Library head and tail\n"
++		<< "\t/auto[=N]\t- find head/tail blocks repeated across files (any version) and cut them;\n"
++		<< "\t\t\t  N = in how many files a line must repeat (default 1% of files, at least 3)\n"
+ 		<< endl;
+ }
+ 
+@@ -44,6 +48,41 @@ string read_file(fs::path const& fn)
+ 	return { istreambuf_iterator<char>{file}, istreambuf_iterator<char>{} };
+ }
+ 
++// Pass 1 of /auto: only the first and the last kWindow bytes of a file, the middle is not read.
++void read_edges(fs::path const& fn, string& head, string& tail, bool& truncated)
++{
++	ifstream file{ fn, ios::binary };
++	if (!file)
++		throw runtime_error("Cannot open file: " + fn.string());
++
++	auto const size{ fs::file_size(fn) };
++	auto const n{ static_cast<size_t>(min<uintmax_t>(size, BoilerplateIndex::kWindow)) };
++
++	head.resize(n);
++	file.read(head.data(), static_cast<streamsize>(n));
++	head.resize(static_cast<size_t>(file.gcount()));
++
++	truncated = size > n;
++	if (!truncated)
++	{
++		tail = head;
++		return;
++	}
++
++	tail.resize(n);
++	file.seekg(static_cast<streamoff>(size - n));
++	file.read(tail.data(), static_cast<streamsize>(n));
++	tail.resize(static_cast<size_t>(file.gcount()));
++}
++
++// "-100500" / "+5" / "0": how much a file lost (or gained) in preparation.
++string delta_str(size_t before, size_t after)
++{
++	if (after == before)
++		return "0";
++	return after < before ? "-" + to_string(before - after) : "+" + to_string(after - before);
++}
++
+ // A folder gives its .txt files in a fixed (sorted) order, a file gives itself.
+ vector<fs::path> collect_files(fs::path const& src)
+ {
+@@ -91,6 +130,25 @@ int main(int argc, char const* argv[])
+ 				opt.big = true;
+ 			else if (flag == "gutten")
+ 				opt.gutten = true;
++			else if (flag == "auto")
++				opt.autoCut = true;
++			else if (flag.rfind("auto=", 0) == 0)
++			{
++				try
++				{
++					opt.autoMin = stoull(flag.substr(5));
++				}
++				catch (...)
++				{
++					opt.autoMin = 0;
++				}
++				if (opt.autoMin == 0)
++				{
++					cerr << "Error: invalid /auto value: " << arg << endl;
++					return EXIT_FAILURE;
++				}
++				opt.autoCut = true;
++			}
+ 			else if (flag == "?" || flag == "h" || flag == "help")
+ 			{
+ 				print_default();
+@@ -128,6 +186,7 @@ int main(int argc, char const* argv[])
+ 		<< "Normalize   : " << (opt.norm ? "yes" : "no") << "\n"
+ 		<< "DNA files   : " << (opt.dna ? "used" : "ignored") << "\n"
+ 		<< "Del Gutten  : " << (opt.gutten ? "yes" : "no") << "\n"
++		<< "Auto head/tail: " << (opt.autoCut ? "yes" : "no") << "\n"
+ 		<< "Save corpus : " << (opt.big ? "yes" : "no") << "\n"
+ 		<< "=================\n" << endl;
+ 
+@@ -138,6 +197,37 @@ int main(int argc, char const* argv[])
+ 	if (opt.big && fs::exists(corpusPath))
+ 		skippedOld = erase_if(files, [&](fs::path const& f) { return fs::equivalent(f, corpusPath); });
+ 
++	// ------------------------------------------------------------------
++	// Pass 1 (/auto): which head/tail lines repeat across the files?
++	// ------------------------------------------------------------------
++	BoilerplateIndex boiler;
++	if (opt.autoCut)
++	{
++		if (files.size() < 10)
++		{
++			cout << "Auto head/tail needs at least 10 files to tell boilerplate from text, skipped.\n" << endl;
++			opt.autoCut = false;
++		}
++		else
++		{
++			cout << "Scanning the head and tail of " << files.size() << " files...\n";
++			string head, tail;
++			bool truncated{ false };
++			for (auto const& f : files)
++				try
++				{
++					read_edges(f, head, tail, truncated);
++					boiler.add_file(head, tail, truncated);
++				}
++				catch (exception const&)
++				{
++					// reported in pass 2
++				}
++			boiler.finish(opt.autoMin ? opt.autoMin : max<size_t>(3, files.size() / 100));
++			cout << boiler.boilerplate_lines() << " repeated lines (in at least " << boiler.min_files() << " files)\n" << endl;
++		}
++	}
++
+ 	ofstream out;
+ 	if (opt.big)
+ 	{
+@@ -155,6 +245,7 @@ int main(int argc, char const* argv[])
+ 	// ------------------------------------------------------------------
+ 	size_t index{ 0 }, used{ 0 }, failed{ 0 }, dnaIgnored{ 0 }, noMarkers{ 0 }, emptied{ 0 };
+ 	size_t charsIn{ 0 }, charsOut{ 0 };
++	size_t autoHeadFiles{ 0 }, autoTailFiles{ 0 }, autoHeadChars{ 0 }, autoTailChars{ 0 };
+ 
+ 	for (auto const& f : files)
+ 	{
+@@ -172,7 +263,6 @@ int main(int argc, char const* argv[])
+ 			continue;
+ 		}
+ 		auto const sizeIn{ text.size() };
+-		charsIn += sizeIn;
+ 
+ 		if (text.empty())
+ 		{
+@@ -188,8 +278,10 @@ int main(int argc, char const* argv[])
+ 			++dnaIgnored;
+ 			continue;
+ 		}
++		charsIn += sizeIn;
+ 
+ 		string note;
++		size_t headCut{ 0 }, tailCut{ 0 };
+ 		if (isDna)
+ 		{
+ 			text = extract_genome(text);
+@@ -197,16 +289,33 @@ int main(int argc, char const* argv[])
+ 		}
+ 		else
+ 		{
++			if (opt.autoCut)
++			{
++				auto const cut{ boiler.find_cut(text) };
++				headCut = cut.head;
++				tailCut = text.size() - cut.tail;
++				text.erase(cut.tail);
++				text.erase(0, cut.head);
++				autoHeadFiles += headCut > 0;
++				autoTailFiles += tailCut > 0;
++				autoHeadChars += headCut;
++				autoTailChars += tailCut;
++			}
+ 			if (opt.gutten && !strip_gutenberg(text))
+ 			{
+ 				++noMarkers;
+-				note = "no Gutenberg markers, kept as is";
++				note = headCut || tailCut ? "no Gutenberg markers" : "no Gutenberg markers, kept as is";
+ 			}
+ 			if (opt.norm)
+ 				text = normalize_whitespace(text);
+ 		}
+ 
+-		cout << '\t' << sizeIn << " -> " << text.size() << (note.empty() ? "" : "\t") << note << '\n';
++		cout << '\t' << text.size() << " (" << delta_str(sizeIn, text.size()) << ")";
++		if (opt.autoCut && !isDna)
++			cout << "\thead -" << headCut << ", tail -" << tailCut;
++		if (!note.empty())
++			cout << '\t' << note;
++		cout << '\n';
+ 
+ 		if (text.empty())
+ 		{
+@@ -237,8 +346,11 @@ int main(int argc, char const* argv[])
+ 		cout << "No markers       : " << noMarkers << "\n";
+ 	if (skippedOld)
+ 		cout << "Skipped input    : previous corpus.txt\n";
++	if (opt.autoCut)
++		cout << "Auto cut head    : " << autoHeadFiles << " files, " << autoHeadChars << " chars\n"
++		<< "Auto cut tail    : " << autoTailFiles << " files, " << autoTailChars << " chars\n";
+ 	cout << "Characters in    : " << charsIn << "\n"
+-		<< "Characters out   : " << charsOut << "\n";
++		<< "Characters out   : " << charsOut << " (" << delta_str(charsIn, charsOut) << ", file separators included)\n";
+ 
+ 	if (!opt.big)
+ 	{
+diff --git a/llm-tools/text_ops.h b/llm-tools/text_ops.h
+index 2bb1e69..94e06f4 100644
+--- a/llm-tools/text_ops.h
++++ b/llm-tools/text_ops.h
+@@ -1,8 +1,11 @@
+ #pragma once
++#include <algorithm>
+ #include <cctype>
+ #include <string>
+ #include <string_view>
++#include <unordered_map>
+ #include <utility>
++#include <vector>
+ 
+ // Pure text-preparation functions used by llm-tools (no state, no I/O).
+ 
+@@ -41,7 +44,7 @@ inline std::string normalize_whitespace(std::string const& text)
+ }
+ 
+ // Keeps only the book body between the START/END markers, in place.
+-// Returns true if at least one START marker was found. A file without markers
++// Returns true if a START (or, failing that, an END) marker was found. A file without markers
+ // (e.g. conversations.txt) is left unchanged and false is returned.
+ // Must run BEFORE normalize_whitespace: it looks for the end of the marker line.
+ inline bool strip_gutenberg(std::string& text)
+@@ -76,8 +79,17 @@ inline bool strip_gutenberg(std::string& text)
+ 	}
+ 
+ 	if (found)
++	{
+ 		text = std::move(out);
+-	return found;
++		return true;
++	}
++
++	// No START (e.g. the head was already cut by BoilerplateIndex), but the END marker survived.
++	auto const e{ text.find(endTag) };
++	if (e == std::string::npos)
++		return false;
++	text.resize(e);
++	return true;
+ }
+ 
+ // Heuristic: does the file look like a raw nucleotide sequence? Looks at the first 64K
+@@ -144,3 +156,167 @@ inline std::string extract_genome(std::string const& src)
+ 
+ 	return ret;
+ }
++
++// ---------------------------------------------------------------------------
++// Repeated head/tail detection (/auto)
++//
++// Every Gutenberg file starts and ends with licence text that is (almost) the same in
++// hundreds of files, in several versions. Instead of listing the versions, look at the
++// first/last kWindow bytes of ALL files: a line that shows up there in at least `minFiles`
++// different files is boilerplate. Per file the head is cut after the last boilerplate line
++// of the head window and the tail before the first boilerplate line of the tail window.
++// Unique lines inside a block (title, author, "Produced by") are tolerated, up to kMaxGap
++// in a row; the leftovers outside the block are unique, so they are harmless.
++// ---------------------------------------------------------------------------
++class BoilerplateIndex
++{
++public:
++	static constexpr size_t kWindow{ 32 * 1024 };   // how much of each end is examined
++	static constexpr size_t kMinLine{ 16 };         // shorter lines ("CHAPTER I.") are never evidence
++	static constexpr size_t kMaxGap{ 10 };          // unique lines tolerated inside a boilerplate block
++
++	struct Cut { size_t head{ 0 }, tail{ 0 }; };    // keep [head, tail)
++
++	// Pass 1: feed the first and the last kWindow bytes of every file. `truncated` is true
++	// when the file is longer than kWindow, i.e. the window edges cut a line in half.
++	void add_file(std::string_view head, std::string_view tail, bool truncated)
++	{
++		std::vector<size_t> keys;
++
++		auto collect = [&](std::string_view window, bool dropFirst, bool dropLast)
++		{
++			size_t pos{ 0 };
++			bool first{ true };
++			while (pos < window.size())
++			{
++				auto eol{ window.find('\n', pos) };
++				bool const last{ eol == std::string_view::npos };
++				if (last)
++					eol = window.size();
++
++				bool const partial{ (first && dropFirst) || (last && dropLast) };   // cut by the window edge
++				first = false;
++				if (!partial)
++				{
++					auto const line{ trim(window.substr(pos, eol - pos)) };
++					if (line.size() >= kMinLine)
++						keys.push_back(key(line));
++				}
++				pos = eol + 1;
++			}
++		};
++
++		collect(head, false, truncated);   // the head window is cut at its end
++		collect(tail, truncated, false);   // the tail window is cut at its start
++
++		std::sort(keys.begin(), keys.end());
++		keys.erase(std::unique(keys.begin(), keys.end()), keys.end());   // a file counts once per line
++		for (auto const k : keys)
++			++m_Df[k];
++	}
++
++	// Lines seen in at least minFiles files are boilerplate.
++	void finish(size_t minFiles)
++	{
++		m_MinFiles = minFiles;
++		m_Common = 0;
++		for (auto const& kv : m_Df)
++			if (kv.second >= minFiles)
++				++m_Common;
++	}
++
++	size_t min_files() const { return m_MinFiles; }
++	size_t boilerplate_lines() const { return m_Common; }
++
++	// Pass 2: where to cut one whole file.
++	Cut find_cut(std::string_view text) const
++	{
++		size_t const n{ text.size() };
++		Cut cut{ 0, n };
++		if (m_MinFiles == 0)
++			return cut;
++		bool const truncated{ n > kWindow };
++
++		// Head: forward over the first kWindow bytes.
++		{
++			size_t const limit{ std::min(n, kWindow) };
++			size_t pos{ 0 }, gap{ 0 };
++			while (pos < limit)
++			{
++				auto eol{ text.find('\n', pos) };
++				if (eol == std::string_view::npos)
++					eol = n;
++				if (truncated && eol >= limit)
++					break;   // this line crosses the window edge
++
++				auto const line{ trim(text.substr(pos, eol - pos)) };
++				if (line.size() >= kMinLine)
++				{
++					if (common(line))
++					{
++						cut.head = std::min(eol + 1, n);
++						gap = 0;
++					}
++					else if (++gap > kMaxGap)
++						break;
++				}
++				pos = eol + 1;
++			}
++		}
++
++		// Tail: backward over the last kWindow bytes, never into the head that was cut.
++		{
++			size_t const lowest{ std::max(cut.head, truncated ? n - kWindow : size_t{ 0 }) };
++			size_t hi{ n }, gap{ 0 };
++			if (hi > 0 && text[hi - 1] == '\n')
++				--hi;   // terminator of the last line
++			while (hi > lowest)
++			{
++				auto const nl{ text.rfind('\n', hi - 1) };
++				size_t const start{ nl == std::string_view::npos ? 0 : nl + 1 };
++				if (start < lowest)
++					break;   // this line crosses the window edge
++
++				auto const line{ trim(text.substr(start, hi - start)) };
++				if (line.size() >= kMinLine)
++				{
++					if (common(line))
++					{
++						cut.tail = start;
++						gap = 0;
++					}
++					else if (++gap > kMaxGap)
++						break;
++				}
++				if (start == 0)
++					break;
++				hi = start - 1;
++			}
++		}
++
++		if (cut.tail < cut.head)
++			cut.tail = cut.head;
++		return cut;
++	}
++
++private:
++	static std::string_view trim(std::string_view s)
++	{
++		constexpr std::string_view ws{ " \t\r\v\f" };
++		auto const a{ s.find_first_not_of(ws) };
++		if (a == std::string_view::npos)
++			return {};
++		return s.substr(a, s.find_last_not_of(ws) - a + 1);
++	}
++
++	static size_t key(std::string_view line) { return std::hash<std::string_view>{}(line); }
++
++	bool common(std::string_view line) const
++	{
++		auto const it{ m_Df.find(key(line)) };
++		return it != m_Df.end() && it->second >= m_MinFiles;
++	}
++
++	std::unordered_map<size_t, size_t> m_Df;   // line hash -> number of files whose head/tail has it
++	size_t m_MinFiles{ 0 }, m_Common{ 0 };
++};
