@@ -19,6 +19,7 @@ public:
 	void Init(CChildView* pView, CNetSettingsDlg const&);
 	CString GetText(BOOL isFast);
 	std::vector<double> GetLoss();
+	std::vector<double> GetVal();   // validation loss, one entry per slow_mod steps
 
 public:
 	virtual BOOL InitInstance();
@@ -30,6 +31,7 @@ protected:
 
 private:
 	std::string greedy_decode();
+	double EvalVal();
 	std::string generate(std::string const& prompt, size_t maxNewTokens);
 	template<typename It> size_t sample_top_k(It first, It last);
 	void SetText(BOOL isFast, std::string&&);
@@ -46,7 +48,8 @@ private:
 
 	std::mutex m_Mtx;
 	CString m_FastText, m_SlowText;
-	std::vector<double> m_Loss;
+	std::vector<double> m_Loss, m_Val;
+	size_t m_TrainEnd{ 0 };   // ids [m_TrainEnd, end) are held out and never trained on
 
 	std::mt19937 m_Rng;
 	std::normal_distribution<llm::scalar> m_Dist;

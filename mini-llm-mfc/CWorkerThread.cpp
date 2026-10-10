@@ -8,6 +8,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <random>
 #include "CNetSettingsDlg.h"
@@ -70,6 +71,13 @@ void CWorkerThread::Init(CChildView* pView, CNetSettingsDlg const& dlg)
 	m_SampleIds = m_Tok.encode(m_Sample);
 	m_AllIds = m_Tok.encode(dlg.m_Corpus);
 	assert(m_AllIds.size() > dlg.m_CTX + 1);   // guards the subtraction below
+
+	// Hold out the last 5% of the corpus (never trained on) for validation loss.
+	// If either side would be shorter than one window, skip validation entirely.
+	size_t const valLen{ m_AllIds.size() / 20 };
+	m_TrainEnd = (valLen > m_CTX + 1 && m_AllIds.size() - valLen > m_CTX + 1)
+		? m_AllIds.size() - valLen
+		: m_AllIds.size();
 }
 
 CString CWorkerThread::GetText(BOOL isFast)
@@ -82,6 +90,14 @@ std::vector<double> CWorkerThread::GetLoss()
 {
 	std::lock_guard _o{ m_Mtx };
 	return std::move(m_Loss);
+}
+
+std::vector<double> CWorkerThread::GetVal()
+{
+	std::lock_guard _o{ m_Mtx };
+	std::vector<double> ret;
+	ret.swap(m_Val);
+	return ret;
 }
 
 BOOL CWorkerThread::InitInstance()
@@ -107,7 +123,7 @@ void CWorkerThread::OnNextStep(WPARAM, LPARAM)
 	ASSERT(m_pView);
 	ASSERT(m_AllIds.size() > m_CTX + 1);
 
-	size_t const start{ m_Rng() % (m_AllIds.size() - m_CTX - 1) };
+	size_t const start{ m_Rng() % (m_TrainEnd - m_CTX - 1) };   // train region only
 	auto const itStart{ m_AllIds.begin() + start }, itEnd{ itStart + m_CTX };
 	std::vector<size_t>
 		x{ itStart , itEnd },
@@ -126,12 +142,37 @@ void CWorkerThread::OnNextStep(WPARAM, LPARAM)
 	}
 	if (!(m_uStep % slow_mod))
 	{
+		if (auto const v{ EvalVal() }; !std::isnan(v))
+		{
+			std::lock_guard _o{ m_Mtx };
+			m_Val.push_back(v);
+		}
 		SetText(FALSE, generate(m_Sample, 60));
 		m_pView->PostMessage(WM_SLOW_FINISHED, m_uStep);
 	}
 
 	if (m_uStep < max_steps)
 		PostThreadMessage(WM_NEXT_STEP, ++m_uStep, 0);
+}
+
+// Mean loss over a fixed set of evenly spaced held-out windows, so successive
+// evaluations are comparable. NaN when there is no validation region.
+double CWorkerThread::EvalVal()
+{
+	size_t const valLen{ m_AllIds.size() - m_TrainEnd };
+	if (valLen <= m_CTX + 1)
+		return std::numeric_limits<double>::quiet_NaN();
+
+	size_t const slots{ valLen - m_CTX - 1 };
+	size_t const n{ (std::min<size_t>)(16, slots) };
+	double sum{};
+	for (size_t i = 0; i < n; ++i)
+	{
+		auto const itStart{ m_AllIds.begin() + m_TrainEnd + i * slots / n }, itEnd{ itStart + m_CTX };
+		std::vector<size_t> x{ itStart, itEnd }, y{ std::next(itStart), std::next(itEnd) };
+		sum += cross_entropy(m_Model.forward(x), y);
+	}
+	return sum / static_cast<double>(n);
 }
 
 std::string CWorkerThread::greedy_decode()

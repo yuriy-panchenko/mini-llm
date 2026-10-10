@@ -111,14 +111,43 @@ std::string replace_all_fast(const std::string& s, const std::string& from, cons
 	return out;
 }
 
+// Keep only the book body between the START/END markers. Files without markers
+// (e.g. conversations.txt) pass through unchanged.
+std::string strip_gutenberg(std::string const& text)
+{
+	constexpr std::string_view startTag{ "*** START OF" }, endTag{ "*** END OF" };
+
+	std::string out;
+	size_t pos{ 0 };
+	bool found{ false };
+	while (true)
+	{
+		auto const s{ text.find(startTag, pos) };
+		if (s == std::string::npos)
+			break;
+		auto const bodyStart{ text.find('\n', s) };
+		if (bodyStart == std::string::npos)
+			break;
+		auto const e{ text.find(endTag, bodyStart) };
+		auto const bodyEnd{ e == std::string::npos ? text.size() : e };   // truncated file: keep the rest
+
+		out.append(text, bodyStart + 1, bodyEnd - bodyStart - 1);
+		out += "\n\n";   // keep the last word of one book from fusing with the first of the next
+		found = true;
+
+		if (e == std::string::npos)
+			break;
+		pos = e + endTag.size();
+	}
+	return found ? out : text;
+}
+
 int main(int argc, char const* argv[])
 {
 	// Default values
 	fs::path src_path;
 	fs::path dst_path = fs::current_path();   // current by default
-	bool do_norm = false;
-	bool do_dna = false;
-	bool do_big = false;
+	bool do_norm{ false }, do_dna{ false }, do_big{ false }, doGutten{ false };
 	size_t vocab_size = max_vocab_size;       // default max
 
 	// ------------------------------------------------------------------
@@ -133,6 +162,7 @@ int main(int argc, char const* argv[])
 			<< "\t/dna\t\t- open file as Genome file\n"
 			<< "\t/big\t\t- save combined and cleaned corpus to corpus.txt file\n"
 			<< "\t/size=1024\t- max vocabulary size (default is " << max_vocab_size << ")\n"
+			<< "\t/gutten\t- strip Guttenberg Library head and tail\n"
 			<< endl;
 		return EXIT_SUCCESS;
 	}
@@ -141,51 +171,48 @@ int main(int argc, char const* argv[])
 	vector<string> positional;
 	for (int i = 1; i < argc; ++i)
 	{
-		string arg = argv[i];
+		string const arg{ argv[i] };
 
-		// Flags (case-insensitive comparison for convenience)
-		if (arg == "/norm" || arg == "/NORM" || arg == "-norm")
+		bool const isFlag{ arg.front() == '/' || arg.front() == '-' };
+		if (isFlag)
 		{
-			do_norm = true;
-		}
-		else if (arg == "/dna" || arg == "/DNA" || arg == "-dna")
-		{
-			do_dna = true;
-		}
-		else if (arg == "/big" || arg == "/BIG" || arg == "-big")
-		{
-			do_big = true;
-		}
-		else if (arg.rfind("/size=", 0) == 0 || arg.rfind("/SIZE=", 0) == 0 || arg.rfind("-size=", 0) == 0)
-		{
-			// Parse /size=N or -size=N
-			string value = arg.substr(arg.find('=') + 1);
-			try
+			string flag{ std::next(arg.begin()),arg.end() };
+			std::transform(flag.begin(), flag.end(), flag.begin(), [](char a) {return std::tolower(a); });
+			if (flag == "norm")
+				do_norm = true;
+			else if (flag == "dna")
+				do_dna = true;
+			else if (flag == "big")
+				do_big = true;
+			else if (flag == "gutten")
+				doGutten = true;
+			else if (!flag.rfind("size=", 0))
 			{
-				size_t parsed = stoull(value);
-				if (parsed == 0 || parsed > max_vocab_size)
+				// Parse /size=N or -size=N
+				string value = flag.substr(flag.find('=') + 1);
+				try
 				{
-					cerr << "Error: vocabulary size must be between 1 and " << max_vocab_size << endl;
+					size_t parsed = stoull(value);
+					if (parsed == 0 || parsed > max_vocab_size)
+					{
+						cerr << "Error: vocabulary size must be between 1 and " << max_vocab_size << endl;
+						return EXIT_FAILURE;
+					}
+					vocab_size = parsed;
+				}
+				catch (...)
+				{
+					cerr << "Error: invalid vocabulary size value: " << value << endl;
 					return EXIT_FAILURE;
 				}
-				vocab_size = parsed;
 			}
-			catch (...)
+			else
 			{
-				cerr << "Error: invalid vocabulary size value: " << value << endl;
+				cerr << "Unknown flag: " << arg << endl;
 				return EXIT_FAILURE;
 			}
 		}
-		else if (arg[0] == '/' || arg[0] == '-')
-		{
-			cerr << "Unknown flag: " << arg << endl;
-			return EXIT_FAILURE;
-		}
-		else
-		{
-			// Positional argument
-			positional.push_back(arg);
-		}
+		else positional.push_back(arg);
 	}
 
 	// Assign positional arguments
@@ -220,6 +247,7 @@ int main(int argc, char const* argv[])
 		<< "Destination : " << dst_path << "\n"
 		<< "Normalize   : " << (do_norm ? "yes" : "no") << "\n"
 		<< "DNA mode    : " << (do_dna ? "yes" : "no") << "\n"
+		<< "Del Gutten  : " << (doGutten ? "yes" : "no") << "\n"
 		<< "Save corpus : " << (do_big ? "yes" : "no") << "\n"
 		<< "Vocab size  : " << vocab_size << " (0x" << hex << vocab_size << dec << ")\n"
 		<< "===================================\n" << endl;
@@ -263,6 +291,13 @@ int main(int argc, char const* argv[])
 	{
 		corpus = llm::normalize_whitespace(corpus);
 		cout << "Whitespace normalized.\n";
+	}
+
+	if (doGutten)
+	{
+		auto const sizeb4{ corpus.length() };
+		corpus = strip_gutenberg(corpus);
+		cout << "Guttenberg headers removed. Freed " <<  sizeb4 - corpus.size() << " chars\n";
 	}
 
 	if (do_big)

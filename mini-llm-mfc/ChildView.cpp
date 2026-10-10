@@ -105,6 +105,9 @@ void CChildView::OnPaint()
 				Min = .0;
 			CString s;
 			s.Format(_T("Max %.4f  Min %.4f  Count %I64u"), Max, Min, m_LossData.size());
+			s.AppendFormat(_T("  MA50 %.4f"), m_MA50.back());
+			if (!m_ValData.empty())
+				s.AppendFormat(_T("  Val %.4f"), m_ValData.back());
 			CFont font;
 			font.CreatePointFont(90, _T("Consolas"));
 			memDC.SelectObject(font);
@@ -135,6 +138,46 @@ void CChildView::OnPaint()
 					memDC.LineTo(pnt);
 				}
 			}
+
+			// Overlays share the raw curve's x/y mapping: white = MA50, green = validation.
+			bool const scaled{ m_bShowAll && bCompressed };
+			auto const from{ static_cast<size_t>(std::distance(m_LossData.cbegin(), itFrom)) };
+			auto const toX{ [&](size_t i) {
+				return scaled ? int(double(m_rChart.Width()) * (i - from) / m_LossData.size())
+							  : int(i - from); } };
+			auto const toY{ [&](double v) {
+				auto const y{ int(m_rChart.Height() * (Max - v) / (Max - Min)) };
+				return (std::max)(0, (std::min)(y, int(m_rChart.Height()) - 1)); } };
+
+			if (m_bShowMA50)
+			{
+				CPen penMA{ PS_SOLID, 2, RGB(240, 240, 240) };
+				memDC.SelectObject(penMA);
+				memDC.MoveTo(toX(from), toY(m_MA50[from]));
+				for (size_t i = from + 1; i < m_MA50.size(); ++i)
+					memDC.LineTo(toX(i), toY(m_MA50[i]));
+				memDC.SelectObject(pen);   // deselect before penMA is destroyed
+			}
+
+			if (!m_ValData.empty())
+			{
+				CPen penVal{ PS_SOLID, 2, RGB(60, 220, 60) };
+				memDC.SelectObject(penVal);
+				bool started{ false };
+				for (size_t k = 0; k < m_ValData.size(); ++k)
+				{
+					auto const step{ k * slow_mod };
+					if (step < from)
+						continue;
+					CPoint const p{ toX(step), toY(m_ValData[k]) };
+					if (started)
+						memDC.LineTo(p);
+					else
+						memDC.MoveTo(p);
+					started = true;
+				}
+				memDC.SelectObject(pen);
+			}
 		}
 	}
 
@@ -155,12 +198,12 @@ int CChildView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	int col{};
 	m_FastList.SetExtendedStyle(LVS_EX_AUTOSIZECOLUMNS | LVS_EX_DOUBLEBUFFER | LVS_EX_FULLROWSELECT | LVS_EX_FULLROWSELECT);
-	m_FastList.InsertColumn(col++, _T("N"));
+	m_FastList.InsertColumn(col++, _T("N"), 0, m_FastList.GetStringWidth(_T("999999")) + 16);
 	m_FastList.InsertColumn(col++, _T("Answer"));
 
 	col = 0;
 	m_SlowList.SetExtendedStyle(LVS_EX_AUTOSIZECOLUMNS | LVS_EX_DOUBLEBUFFER | LVS_EX_FULLROWSELECT | LVS_EX_FULLROWSELECT);
-	m_SlowList.InsertColumn(col++, _T("N"));
+	m_SlowList.InsertColumn(col++, _T("N"), 0, m_SlowList.GetStringWidth(_T("999999")) + 16);
 	m_SlowList.InsertColumn(col++, _T("Answer"));
 
 	return 0;
@@ -222,11 +265,19 @@ LRESULT CChildView::OnFastText(WPARAM wParam, LPARAM)
 		m_FastList.EnsureVisible(index, FALSE);
 
 	if (!(wParam % (20 * fast_mod)))
-		for (int i = 0; i < m_FastList.GetHeaderCtrl()->GetItemCount(); i++)
+		for (int i = 1; i < m_FastList.GetHeaderCtrl()->GetItemCount(); i++)
 			m_FastList.SetColumnWidth(i, LVSCW_AUTOSIZE_USEHEADER);
 
-	auto loss{ m_pTh->GetLoss() };
-	m_LossData.insert(m_LossData.end(), loss.begin(), loss.end());
+	constexpr size_t maWindow{ 50 };
+	for (double const l : m_pTh->GetLoss())
+	{
+		m_LossData.push_back(l);
+		m_MA50Sum += l;
+		auto const n{ m_LossData.size() };
+		if (n > maWindow)
+			m_MA50Sum -= m_LossData[n - maWindow - 1];
+		m_MA50.push_back(m_MA50Sum / static_cast<double>((std::min)(n, maWindow)));
+	}
 	InvalidateRect(m_rChart);
 
 	return 0;
@@ -245,6 +296,9 @@ LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
 	item.pszText = (LPTSTR)(LPCTSTR)s;
 	auto const index{ m_SlowList.InsertItem(&item) };
 
+	for (double const v : m_pTh->GetVal())
+		m_ValData.push_back(v);
+
 	++item.iSubItem;
 	s = m_pTh->GetText(FALSE);
 	s.Replace(_T("\n"), _T("\\n"));
@@ -256,7 +310,7 @@ LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
 		m_SlowList.EnsureVisible(index, FALSE);
 
 	if (!(wParam % (20 * slow_mod)))
-		for (int i = 0; i < m_SlowList.GetHeaderCtrl()->GetItemCount(); i++)
+		for (int i = 1; i < m_SlowList.GetHeaderCtrl()->GetItemCount(); i++)
 			m_SlowList.SetColumnWidth(i, LVSCW_AUTOSIZE_USEHEADER);
 
 	return 0;

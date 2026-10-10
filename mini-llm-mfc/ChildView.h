@@ -52,7 +52,8 @@ private:
 	CRect m_rCanvas, m_rChart;
 	CListCtrl m_FastList, m_SlowList;
 	CWorkerThread* m_pTh;
-	std::vector<double> m_LossData,m_MA50;
+	std::vector<double> m_LossData, m_MA50, m_ValData;   // m_MA50[i] pairs with m_LossData[i]; m_ValData[i] is step i*slow_mod
+	double m_MA50Sum{ 0 };
 	BOOL m_bShowAll,m_bShowMA50,m_bShowZero;
 public:
 	afx_msg void OnContextMenu(CWnd* /*pWnd*/, CPoint /*point*/);
