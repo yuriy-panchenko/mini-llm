@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -22,6 +23,7 @@ namespace fs = filesystem;
 struct Options
 {
 	bool norm{ false }, dna{ false }, big{ false }, gutten{ false }, autoCut{ false };
+	double maxDigits{ 0 };   // /maxdigits=N: skip files with more than N% digits (0 = off)
 	size_t autoMin{ 0 };   // /auto=N: a line must repeat in N files to be boilerplate (0 = automatic)
 };
 
@@ -36,7 +38,17 @@ void print_default()
 		<< "\t/gutten\t- strip Guttenberg Library head and tail\n"
 		<< "\t/auto[=N]\t- find head/tail blocks repeated across files (any version) and cut them;\n"
 		<< "\t\t\t  N = in how many files a line must repeat (default 1% of files, at least 3)\n"
+		<< "\t/maxdigits=N\t- skip files with more than N% digits (tables, number runs); the share is\n"
+		<< "\t\t\t  shown for every file\n"
 		<< endl;
+}
+
+// "12.3%"
+string pct_str(double pct)
+{
+	char buf[32];
+	snprintf(buf, sizeof buf, "%.1f%%", pct);
+	return buf;
 }
 
 // Binary read: no newline translation, so what is processed is what is on disk.
@@ -130,6 +142,22 @@ int main(int argc, char const* argv[])
 				opt.big = true;
 			else if (flag == "gutten")
 				opt.gutten = true;
+			else if (flag.rfind("maxdigits=", 0) == 0)
+			{
+				try
+				{
+					opt.maxDigits = stod(flag.substr(10));
+				}
+				catch (...)
+				{
+					opt.maxDigits = 0;
+				}
+				if (!(opt.maxDigits > 0 && opt.maxDigits <= 100))
+				{
+					cerr << "Error: /maxdigits needs a value in (0, 100]: " << arg << endl;
+					return EXIT_FAILURE;
+				}
+			}
 			else if (flag == "auto")
 				opt.autoCut = true;
 			else if (flag.rfind("auto=", 0) == 0)
@@ -187,6 +215,7 @@ int main(int argc, char const* argv[])
 		<< "DNA files   : " << (opt.dna ? "used" : "ignored") << "\n"
 		<< "Del Gutten  : " << (opt.gutten ? "yes" : "no") << "\n"
 		<< "Auto head/tail: " << (opt.autoCut ? "yes" : "no") << "\n"
+		<< "Max digits  : " << (opt.maxDigits > 0 ? pct_str(opt.maxDigits) : "off") << "\n"
 		<< "Save corpus : " << (opt.big ? "yes" : "no") << "\n"
 		<< "=================\n" << endl;
 
@@ -245,6 +274,8 @@ int main(int argc, char const* argv[])
 	// ------------------------------------------------------------------
 	size_t index{ 0 }, used{ 0 }, failed{ 0 }, dnaIgnored{ 0 }, noMarkers{ 0 }, emptied{ 0 };
 	size_t charsIn{ 0 }, charsOut{ 0 };
+	size_t digitSkipped{ 0 }, digitSkippedChars{ 0 };
+	vector<pair<fs::path, double>> digitList;
 	size_t autoHeadFiles{ 0 }, autoTailFiles{ 0 }, autoHeadChars{ 0 }, autoTailChars{ 0 };
 
 	for (auto const& f : files)
@@ -313,9 +344,26 @@ int main(int argc, char const* argv[])
 		cout << '\t' << text.size() << " (" << delta_str(sizeIn, text.size()) << ")";
 		if (opt.autoCut && !isDna)
 			cout << "\thead -" << headCut << ", tail -" << tailCut;
+
+		double const digits{ isDna ? 0.0 : digit_share(text) };
+		if (!isDna)
+			cout << '\t' << pct_str(digits) << " digits";
 		if (!note.empty())
 			cout << '\t' << note;
+
+		bool const tooManyDigits{ opt.maxDigits > 0 && digits > opt.maxDigits };
+		if (tooManyDigits)
+			cout << "\tSKIPPED: too many digits";
 		cout << '\n';
+
+		if (tooManyDigits)
+		{
+			charsIn -= sizeIn;   // not part of the corpus, so not a "loss" either
+			digitSkippedChars += sizeIn;
+			++digitSkipped;
+			digitList.emplace_back(f.filename(), digits);
+			continue;
+		}
 
 		if (text.empty())
 		{
@@ -346,11 +394,16 @@ int main(int argc, char const* argv[])
 		cout << "No markers       : " << noMarkers << "\n";
 	if (skippedOld)
 		cout << "Skipped input    : previous corpus.txt\n";
+	if (opt.maxDigits > 0)
+		cout << "Skipped (digits) : " << digitSkipped << " files, " << digitSkippedChars << " chars\n";
 	if (opt.autoCut)
 		cout << "Auto cut head    : " << autoHeadFiles << " files, " << autoHeadChars << " chars\n"
 		<< "Auto cut tail    : " << autoTailFiles << " files, " << autoTailChars << " chars\n";
 	cout << "Characters in    : " << charsIn << "\n"
 		<< "Characters out   : " << charsOut << " (" << delta_str(charsIn, charsOut) << ", file separators included)\n";
+
+	for (auto const& [name, pct] : digitList)
+		cout << "\tskipped " << name << "\t" << pct_str(pct) << " digits\n";
 
 	if (!opt.big)
 	{

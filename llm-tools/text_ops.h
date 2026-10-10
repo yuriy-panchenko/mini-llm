@@ -92,6 +92,22 @@ inline bool strip_gutenberg(std::string& text)
 	return true;
 }
 
+// Share of digits among the non-blank characters, in percent (0 for an empty text).
+// Prose sits well below 1%; tables, digit expansions and page-number runs are far above.
+inline double digit_share(std::string const& text)
+{
+	size_t digits{ 0 }, chars{ 0 };
+	for (char const ch : text)
+	{
+		if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\v' || ch == '\f')
+			continue;
+		++chars;
+		if (ch >= '0' && ch <= '9')
+			++digits;
+	}
+	return chars ? 100.0 * static_cast<double>(digits) / static_cast<double>(chars) : 0.0;
+}
+
 // Heuristic: does the file look like a raw nucleotide sequence? Looks at the first 64K
 // non-blank characters (FASTA '>' / ';' header lines skipped) and requires >=95% of them
 // to be uppercase A, C, G, T or N. Same alphabet extract_genome() works with: soft-masked
