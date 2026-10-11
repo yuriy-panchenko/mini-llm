@@ -206,7 +206,7 @@ int CChildView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 		{}, this, ID_LIST_FAST))
 		return -1;
 	if (!m_SlowList.Create(WS_CHILD | WS_BORDER | WS_VISIBLE
-		| LVS_REPORT | LVS_NOSORTHEADER | LVS_SHOWSELALWAYS | LVS_SINGLESEL,
+		| LVS_REPORT | LVS_NOSORTHEADER | LVS_SHOWSELALWAYS | LVS_SINGLESEL | LVS_OWNERDRAWFIXED,
 		{}, this, ID_LIST_SLOW))
 		return -1;
 
@@ -405,25 +405,26 @@ void CChildView::OnEditCopy()
 
 void CChildView::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 {
-	if (m_pTh && nIDCtl == ID_LIST_FAST)
+	if (m_pTh && nIDCtl == ID_LIST_FAST || nIDCtl == ID_LIST_SLOW)
 	{
 		CDC dc;
 		if (!dc.Attach(lpDrawItemStruct->hDC))
 			return;
 
 		auto const iSave{ dc.SaveDC() };
+		auto& list{ nIDCtl == ID_LIST_FAST ? m_FastList : m_SlowList };
 
-		CString s, text{ m_FastList.GetItemText(lpDrawItemStruct->itemID, 0) };
+		CString s, text{ list.GetItemText(lpDrawItemStruct->itemID, 0) };
 		CRect const canvas{ lpDrawItemStruct->rcItem };
 		auto rect{ canvas }, r{ rect };
 
 		dc.SetBkMode(TRANSPARENT);
-		rect.right = m_FastList.GetColumnWidth(0);
+		rect.right = list.GetColumnWidth(0);
 		r = rect;
 		r.right -= 3;
 		dc.DrawText(text, r, DT_SINGLELINE | DT_RIGHT | DT_VCENTER);
 
-		text = m_FastList.GetItemText(lpDrawItemStruct->itemID, 1);
+		text = list.GetItemText(lpDrawItemStruct->itemID, 1);
 		auto const tokens{ m_pTh->Encode(CStringToUtf8(text)) };
 
 		auto itToken{ tokens.begin() };

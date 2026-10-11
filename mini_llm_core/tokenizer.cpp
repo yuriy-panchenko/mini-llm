@@ -340,7 +340,7 @@ namespace llm
 			char ch;
 			Tokenizer::TokenId id;
 			std::vector<Node*> child;
-			Node * get_child(char ch)
+			Node* find_child(char ch)
 			{
 				for (auto p : child)
 					if (p->ch == ch)
@@ -353,6 +353,23 @@ namespace llm
 				auto ret{ new Node{ ch } };
 				child.push_back(ret);
 				return ret;
+			}
+
+			bool valid()const
+			{
+				if (!id)
+					return false;
+
+				for (auto p : child)
+					if (!p->valid())
+						return false;
+				return true;
+			}
+
+			~Node()
+			{
+				for (auto p : child)
+					delete p;
 			}
 		};
 
@@ -371,7 +388,7 @@ namespace llm
 				pNode = m_pRoot;
 
 				for (auto ch : str)
-					if (auto pChild{ pNode->get_child(ch) })
+					if (auto pChild{ pNode->find_child(ch) })
 						pNode = pChild;
 					else
 						pNode = pNode->insert(ch);
@@ -381,7 +398,20 @@ namespace llm
 			}
 		}
 
-		Node* get_root(){ return m_pRoot; }
+		bool valid()const
+		{
+			for (auto p : m_pRoot->child)
+				if (!p->valid())
+					return false;
+			return true;
+		}
+
+		Node* get_root() { return m_pRoot; }
+
+		~TokenTree()
+		{
+			delete m_pRoot;
+		}
 
 	private:
 		Node* m_pRoot;
@@ -390,20 +420,21 @@ namespace llm
 	std::vector<Tokenizer::TokenId> Tokenizer::encode2(String const& text) const
 	{
 		TokenTree tree{ m_IdToBytes };
+		assert(tree.valid());
 		std::vector<TokenId> ret;
 		ret.reserve(text.length());
 		auto pCurr{ tree.get_root() };
 
 		for (auto ch : text)
 		{
-			if (auto pChild{ pCurr->get_child(ch) })
+			if (auto pChild{ pCurr->find_child(ch) })
 			{
 				pCurr = pChild;
 			}
 			else
 			{
 				ret.push_back(pCurr->id);
-				pCurr = tree.get_root()->get_child(ch);
+				pCurr = tree.get_root()->find_child(ch);
 			}
 		}
 

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <iomanip>
+#include <array>
 #include "..\mini_llm_core\core.h"
 
 using namespace llm;
@@ -684,11 +685,236 @@ int main()
 		assert(res == corpus);
 	}*/
 
+	//std::ifstream file("corpus.txt");
 	std::ifstream file("text.txt");
 	//auto const corpus{ llm::normalize_whitespace(llm::read_all_files("..\\D184MB\\")) };
-	auto const corpus{ llm::normalize_whitespace(std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() }) };
-	//auto const corpus{ std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() } };
+	//auto const corpus{ llm::normalize_whitespace(std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() }) };
+	auto const corpus{ std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() } };
 	std::cout << "Corpus has " << corpus.length() << " chars" << std::endl;
+
+	{
+		struct node
+		{
+			unsigned char ch;
+			Tokenizer::TokenId id;
+			std::vector<node*> child;
+			~node() { for (auto p : child)delete p; }
+			node* find(unsigned char c)
+			{
+				for (auto p : child)
+					if (p->ch == c)
+						return p;
+				return nullptr;
+			}
+			void insert(unsigned char c, Tokenizer::TokenId token)
+			{
+				child.push_back(new node{ c, token });
+			}
+
+			bool trim()
+			{
+				/*for (auto iter{ child.begin() }; iter != child.end();)
+					if ((*iter)->trim())
+					{
+						delete* iter;
+						iter = child.erase(iter);
+					}
+					else ++iter;*/
+				if (child.size() < 4)
+				{
+					for(auto p:child)
+					delete p;
+					child.clear();
+				}
+				else for (auto p : child)
+					p->trim();
+
+				return child.empty();
+			}
+
+			size_t node_count()const
+			{
+				size_t ret{ 1ull };
+				for (auto p : child)
+					ret += p->node_count();
+				return ret;
+			}
+
+			void update(Tokenizer::TokenId& nID)
+			{
+				id = nID++;
+
+				for (auto p : child)
+					p->update(nID);
+			}
+
+			Tokenizer::TokenId last_id()const
+			{
+				if (child.empty())
+					return id;
+				else return child.back()->last_id();
+			}
+
+			bool has(Tokenizer::TokenId i, std::string& res)const
+			{
+				if (id == i)
+				{
+					res = (char)ch;
+					return true;
+				}
+				else if (id > i)
+					return false;
+
+				for (auto p : child)
+					if (p->last_id() >= i)
+						if (p->has(i, res))
+						{
+							res.insert(res.begin(), (char)ch);
+							return true;
+						}
+				return false;
+			}
+		};
+
+		class tree
+		{
+			std::array<node*, 256> root;
+			Tokenizer::TokenId nextID;
+		public:
+			tree()
+				:nextID{ 256 }
+			{
+				for (size_t i = 0; i < 256; i++)
+					root[i] = new node{ unsigned char(i), Tokenizer::TokenId(i) };
+			}
+
+			void trim()
+			{
+				for (auto p : root)
+					p->trim();
+
+				nextID = 256;
+
+				for (auto p : root)
+					p->update(nextID);
+			}
+
+			void expand(std::string const& text)
+			{
+				node* curr{ nullptr };
+
+				for (unsigned char ch : text)
+					if (curr)
+						if (auto next{ curr->find(ch) })
+						{
+							/*if (curr->child.size() < 3)
+							{
+								curr = root[ch];
+							}
+							else*/
+								curr = next;
+						}
+						else
+						{
+							curr->insert(ch, nextID++);
+							curr = nullptr;
+						}
+					else
+						curr = root[ch];
+
+				nextID = 256;
+
+				for (auto p : root)
+					p->update(nextID);
+			}
+
+			~tree() { for (auto p : root) delete p; }
+
+			std::string decode(Tokenizer::TokenId id)const
+			{
+				std::string ret;
+
+				for (auto p : root)
+					if (p->has(id, ret))
+						break;
+
+				return ret;
+			}
+
+			std::string decode(std::vector<Tokenizer::TokenId> const& ids)const
+			{
+				std::string ret;
+
+				for (auto id : ids)
+					ret += decode(id);
+
+				return ret;
+			}
+
+			std::vector<std::string> decode_chunks(std::vector<Tokenizer::TokenId> const& ids)const
+			{
+				std::vector<std::string> ret;
+				ret.reserve(ids.size());
+
+				for (auto id : ids)
+					ret.push_back(decode(id));
+
+				return ret;
+			}
+
+			std::vector<Tokenizer::TokenId> encode(std::string const& text)
+			{
+				std::vector<Tokenizer::TokenId> ret;
+				if (text.empty())
+					return ret;
+				ret.reserve(text.length());
+
+				auto iter{ text.begin() };
+				node* curr{ root[(unsigned char)*iter] };
+
+				for (iter = std::next(iter); iter != text.end(); iter = std::next(iter))
+				{
+					if (auto next{ curr->find((unsigned char)*iter) })
+					{
+						curr = next;
+					}
+					else
+					{
+						ret.push_back(curr->id);
+						curr = root[(unsigned char)*iter];
+					}
+				}
+				if (curr)
+					ret.push_back(curr->id);
+
+				return ret;
+			}
+
+			size_t leaf_count()const
+			{
+				size_t ret{};
+				for (auto p : root)
+					ret += p->node_count();
+				return ret;
+			}
+
+		} bush;
+
+		bush.expand(corpus);
+		auto n1{ bush.leaf_count() };
+		bush.trim();
+		auto n2{ bush.leaf_count() };
+		//bush.trim();
+		//auto n3{ bush.leaf_count() };
+
+		auto const ids{ bush.encode(corpus) };
+		auto const pie{ bush.decode_chunks(ids) };
+		auto const back{ bush.decode(ids) };
+
+		assert(back == corpus);
+
+		int y = 0;
+	}
 
 	//{
 	//	// End-to-end demo: real text through Tokenizer -> Embedding -> one causal
@@ -899,7 +1125,7 @@ int main()
 			model.update(lr);
 			if (step % 500 == 0)
 				std::cout << "\n(*): \"" << generate(sample, 60) << "\"\n";
-			else if (step&&step % 100 == 0)
+			else if (step && step % 100 == 0)
 				std::cout << "\n\"" << greedy_decode(model) << "\"\n"
 				;
 			//if (loss < .05)
