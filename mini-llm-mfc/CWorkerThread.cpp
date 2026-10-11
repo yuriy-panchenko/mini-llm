@@ -68,7 +68,6 @@ void CWorkerThread::Init(CChildView* pView, CNetSettingsDlg const& dlg)
 		std::move(body),Linear{ Matrix{dlg.m_Model, dlg.m_VocabSize}.xavier(m_Rng, m_Dist), Vector{dlg.m_VocabSize} } };
 
 	m_Sample = CStringToUtf8(dlg.m_Seed);
-	m_SampleIds = m_Tok.encode(m_Sample);
 	m_AllIds = m_Tok.encode(dlg.m_Corpus);
 	assert(m_AllIds.size() > dlg.m_CTX + 1);   // guards the subtraction below
 
@@ -175,20 +174,14 @@ double CWorkerThread::EvalVal()
 	return sum / static_cast<double>(n);
 }
 
+// Deterministic probe: continue the seed by always taking the most likely token. There is no
+// sampling, so the text changes between calls only because the weights changed. (This used to
+// be one forward pass over the seed, i.e. each token was a one-step-ahead guess made from the
+// TRUE prefix, which cannot be read as text.)
 std::string CWorkerThread::greedy_decode()
 {
-	auto logits{ m_Model.forward({ m_SampleIds.begin(), m_SampleIds.end() }) };
-
-	std::vector<Tokenizer::TokenId> predicted;
-	predicted.reserve(logits.rows());
-	for (size_t r = 0; r < logits.rows(); ++r)
-	{
-		auto row{ logits.row(r) };
-
-		auto itMax{ std::max_element(row.begin(), row.end()) };
-		predicted.push_back((Tokenizer::TokenId)std::distance(row.begin(), itMax));
-	}
-	return m_Tok.decode(predicted);
+	constexpr size_t greedyTokens{ 12 };   // cost: one forward pass per token every fast_mod steps
+	return generate(m_Sample, greedyTokens, true);
 }
 
 // Temperature + top-k sampling over one row of logits. Greedy argmax falls into the
@@ -216,7 +209,7 @@ size_t CWorkerThread::sample_top_k(It first, It last)
 	return idx[pick(m_Rng)];
 }
 
-std::string CWorkerThread::generate(std::string const& prompt, size_t maxNewTokens)
+std::string CWorkerThread::generate(std::string const& prompt, size_t maxNewTokens, bool greedy)
 {
 	std::vector<size_t> window;
 	for (auto id : m_Tok.encode(prompt))
@@ -228,7 +221,9 @@ std::string CWorkerThread::generate(std::string const& prompt, size_t maxNewToke
 		std::vector<size_t> in(window.size() > m_CTX ? window.end() - m_CTX : window.begin(), window.end());
 		auto logits{ m_Model.forward(in) };
 		auto row{ logits.row(logits.rows() - 1) };
-		auto const next{ sample_top_k(row.begin(), row.end()) };
+		auto const next{ greedy
+			? static_cast<size_t>(std::distance(row.begin(), std::max_element(row.begin(), row.end())))
+			: sample_top_k(row.begin(), row.end()) };
 		window.push_back(next);
 		ret += m_Tok.decode({ static_cast<Tokenizer::TokenId>(next) });
 	}
