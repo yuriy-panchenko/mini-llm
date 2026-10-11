@@ -99,6 +99,18 @@ std::vector<double> CWorkerThread::GetVal()
 	return ret;
 }
 
+std::vector<llm::Tokenizer::TokenId> CWorkerThread::Encode(llm::Tokenizer::String const& text) const
+{
+	std::lock_guard _o{ m_Mtx };
+	return m_Tok.encode(text);
+}
+
+std::vector<llm::Tokenizer::String> CWorkerThread::DecodeApart(std::vector<llm::Tokenizer::TokenId> const& ids) const
+{
+	std::lock_guard _o{ m_Mtx };
+	return m_Tok.decode_chunks(ids);
+}
+
 BOOL CWorkerThread::InitInstance()
 {
 	PostThreadMessage(WM_NEXT_STEP, 0, 0);

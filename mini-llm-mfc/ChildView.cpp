@@ -11,6 +11,13 @@
 #define new DEBUG_NEW
 #endif
 
+constexpr COLORREF token_colors[] =
+{
+	RGB(127,127,127),
+	RGB(187,187,127),
+	RGB(127,187,187),
+	RGB(187,127,187),
+};
 constexpr int
 chart_height{ 200 },
 list_side_offset{ 5 };
@@ -53,6 +60,7 @@ BEGIN_MESSAGE_MAP(CChildView, CWnd)
 	ON_UPDATE_COMMAND_UI(ID_SHOW_ZERO, &CChildView::OnUpdateShowZero)
 	ON_WM_CONTEXTMENU()
 	ON_COMMAND(ID_EDIT_COPY, &CChildView::OnEditCopy)
+	ON_WM_DRAWITEM()
 END_MESSAGE_MAP()
 
 
@@ -192,7 +200,7 @@ int CChildView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 		return -1;
 
 	if (!m_FastList.Create(WS_CHILD | WS_BORDER | WS_VISIBLE
-		| LVS_REPORT | LVS_NOSORTHEADER | LVS_SHOWSELALWAYS | LVS_SINGLESEL |LVS_OWNERDRAWFIXED,
+		| LVS_REPORT | LVS_NOSORTHEADER | LVS_SHOWSELALWAYS | LVS_SINGLESEL | LVS_OWNERDRAWFIXED,
 		{}, this, ID_LIST_FAST))
 		return -1;
 	if (!m_SlowList.Create(WS_CHILD | WS_BORDER | WS_VISIBLE
@@ -391,4 +399,54 @@ void CChildView::OnContextMenu(CWnd* pWnd, CPoint point)
 void CChildView::OnEditCopy()
 {
 	CopyListCtrlToClipboard(m_SlowList);
+}
+
+void CChildView::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
+{
+	if (m_pTh && nIDCtl == ID_LIST_FAST)
+	{
+		CDC dc;
+		if (!dc.Attach(lpDrawItemStruct->hDC))
+			return;
+
+		auto const iSave{ dc.SaveDC() };
+
+		CString s, text{ m_FastList.GetItemText(lpDrawItemStruct->itemID, 0) };
+		CRect const canvas{ lpDrawItemStruct->rcItem };
+		auto rect{ canvas }, r{ rect };
+
+		dc.SetBkMode(TRANSPARENT);
+		rect.right = m_FastList.GetColumnWidth(0);
+		r = rect;
+		r.right -= 3;
+		dc.DrawText(text, r, DT_SINGLELINE | DT_RIGHT | DT_VCENTER);
+
+		text = m_FastList.GetItemText(lpDrawItemStruct->itemID, 1);
+		auto const tokens{ m_pTh->Encode(CStringToUtf8(text)) };
+
+		auto itToken{ tokens.begin() };
+		dc.SetBkMode(OPAQUE);
+
+		for (auto& cible : m_pTh->DecodeApart(tokens))
+		{
+			s = Utf8ToCString(cible);
+			dc.DrawText(s, r, DT_SINGLELINE | DT_CALCRECT);
+
+			rect.left = rect.right;
+			rect.right += r.Width();
+
+			dc.SetBkColor(GetTokenColor(*itToken));
+			dc.DrawText(s, rect, DT_SINGLELINE);
+
+			++itToken;
+		}
+
+		dc.RestoreDC(iSave);
+		dc.Detach();
+	}
+}
+
+COLORREF CChildView::GetTokenColor(llm::Tokenizer::TokenId id) const
+{
+	return token_colors[id % sizeof(token_colors) / sizeof(COLORREF)];
 }

@@ -93,10 +93,13 @@ void CNetSettingsDlg::OnChangeTextBrowse()
 
 	if (UpdateData())
 	{
-		std::ifstream file(CStringToUtf8(m_File_Text));
+		std::filesystem::path p{ (LPCTSTR)m_File_Text };
+		std::ifstream file{ p };
 		if (file)
-			//m_Corpus = llm::normalize_whitespace(std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() });
-			m_Corpus = std::string{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
+		{
+			m_Corpus.reserve(std::filesystem::file_size(p));
+			m_Corpus.append(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+		}
 	}
 }
 

@@ -21,6 +21,8 @@ public:
 	CString GetText(BOOL isFast);
 	std::vector<double> GetLoss();
 	std::vector<double> GetVal();   // validation loss, one entry per slow_mod steps
+	std::vector<llm::Tokenizer::TokenId> Encode(llm::Tokenizer::String const&)const;
+	std::vector<llm::Tokenizer::String> DecodeApart(std::vector<llm::Tokenizer::TokenId> const&)const;
 
 public:
 	virtual BOOL InitInstance();
@@ -47,7 +49,7 @@ private:
 	double m_Lcoo;
 	std::string m_Sample;
 
-	std::mutex m_Mtx;
+	mutable std::mutex m_Mtx;
 	CString m_FastText, m_SlowText;
 	std::vector<double> m_Loss, m_Val;
 	size_t m_TrainEnd{ 0 };   // ids [m_TrainEnd, end) are held out and never trained on
