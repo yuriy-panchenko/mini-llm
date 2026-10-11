@@ -46,7 +46,13 @@ protected:
 	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
 	afx_msg void OnShowZero();
 	afx_msg void OnUpdateShowZero(CCmdUI* pCmdUI);
+	afx_msg void OnContextMenu(CWnd* /*pWnd*/, CPoint /*point*/);
+	afx_msg void OnEditCopy();
+	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
 	DECLARE_MESSAGE_MAP()
+
+private:
+	COLORREF GetTokenColor(llm::Tokenizer::TokenId)const;
 
 private:
 	CRect m_rCanvas, m_rChart;
@@ -55,8 +61,5 @@ private:
 	std::vector<double> m_LossData, m_MA50, m_ValData;   // m_MA50[i] pairs with m_LossData[i]; m_ValData[i] is step i*slow_mod
 	double m_MA50Sum{ 0 };
 	BOOL m_bShowAll,m_bShowMA50,m_bShowZero;
-public:
-	afx_msg void OnContextMenu(CWnd* /*pWnd*/, CPoint /*point*/);
-	afx_msg void OnEditCopy();
 };
 
