@@ -875,7 +875,11 @@ int main()
 		std::cout << "\nSample input: \"" << tok.decode({ sampleIds.begin(), sampleIds.end() }) << "\"\n";
 		//std::cout << "Predicted (before training): \"" << greedy_decode(model) << "\"\n";
 
-		auto all_ids = tok.encode(corpus);
+		auto all_ids = tok.encode2(corpus);
+		{
+			auto s2{ tok.decode(all_ids) };
+			assert(corpus == s2);
+		}
 		assert(all_ids.size() > ctx + 1);   // guards the subtraction below
 
 		for (int step = 0; step < 100'000; ++step)

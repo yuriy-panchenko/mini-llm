@@ -331,4 +331,84 @@ namespace llm
 		for (size_t i = 0; i + 1 < m_Tokens.size(); ++i)
 			++m_Counts[{ m_Tokens[i], m_Tokens[i + 1] }];
 	}
+
+	class TokenTree
+	{
+	public:
+		struct Node
+		{
+			char ch;
+			Tokenizer::TokenId id;
+			std::vector<Node*> child;
+			Node * get_child(char ch)
+			{
+				for (auto p : child)
+					if (p->ch == ch)
+						return p;
+				return nullptr;
+			}
+
+			Node* insert(char ch)
+			{
+				auto ret{ new Node{ ch } };
+				child.push_back(ret);
+				return ret;
+			}
+		};
+
+	public:
+		TokenTree(std::vector<Tokenizer::String> const& voc)
+		{
+			Node* pNode;
+			Tokenizer::TokenId id{ 0 };
+
+			m_pRoot = new Node{};
+			for (size_t i = 0; i < 256; i++)
+				m_pRoot->child.push_back(new Node{ char(i), Tokenizer::TokenId(i) });
+
+			for (auto& str : voc)
+			{
+				pNode = m_pRoot;
+
+				for (auto ch : str)
+					if (auto pChild{ pNode->get_child(ch) })
+						pNode = pChild;
+					else
+						pNode = pNode->insert(ch);
+
+				pNode->id = id;
+				++id;
+			}
+		}
+
+		Node* get_root(){ return m_pRoot; }
+
+	private:
+		Node* m_pRoot;
+	};
+
+	std::vector<Tokenizer::TokenId> Tokenizer::encode2(String const& text) const
+	{
+		TokenTree tree{ m_IdToBytes };
+		std::vector<TokenId> ret;
+		ret.reserve(text.length());
+		auto pCurr{ tree.get_root() };
+
+		for (auto ch : text)
+		{
+			if (auto pChild{ pCurr->get_child(ch) })
+			{
+				pCurr = pChild;
+			}
+			else
+			{
+				ret.push_back(pCurr->id);
+				pCurr = tree.get_root()->get_child(ch);
+			}
+		}
+
+		ret.push_back(pCurr->id);
+
+		return ret;
+	}
 }

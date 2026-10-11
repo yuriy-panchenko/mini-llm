@@ -40,6 +40,7 @@ namespace llm
 		void train(String const& corpus, size_t vocabSize);
 
 		std::vector<TokenId> encode(String const& text) const;
+		std::vector<TokenId> encode2(String const& text) const;
 		String decode(std::vector<TokenId> const& ids) const;
 		std::vector<String> decode_chunks(std::vector<TokenId> const& ids) const;
 
