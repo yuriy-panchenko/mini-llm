@@ -29,7 +29,8 @@ CChildView::CChildView()
 	:m_pTh{ nullptr }
 	, m_bShowAll{ FALSE }
 	, m_bShowMA50{ TRUE }
-	, m_bShowZero{ TRUE }
+	, m_bShowZero{ FALSE }
+	, m_bShowInfo{ TRUE }
 {}
 
 void CChildView::Initialize(CNetSettingsDlg const& dlg)
@@ -63,6 +64,8 @@ BEGIN_MESSAGE_MAP(CChildView, CWnd)
 	ON_WM_CONTEXTMENU()
 	ON_COMMAND(ID_EDIT_COPY, &CChildView::OnEditCopy)
 	ON_WM_DRAWITEM()
+	ON_COMMAND(ID_SHOW_INFO, &CChildView::OnShowInfo)
+	ON_UPDATE_COMMAND_UI(ID_SHOW_INFO, &CChildView::OnUpdateShowInfo)
 END_MESSAGE_MAP()
 
 
@@ -93,6 +96,7 @@ void CChildView::OnPaint()
 	memDC.CreateCompatibleDC(&dc);
 	int iSave{ memDC.SaveDC() };
 	memDC.SelectObject(bmp);
+
 	CPen pen{ PS_SOLID,1,RGB(200,200,20) };
 	memDC.SelectObject(pen);
 
@@ -189,6 +193,11 @@ void CChildView::OnPaint()
 				memDC.SelectObject(pen);
 			}
 		}
+	}
+
+	if (m_bShowInfo)
+	{
+		//memDC.DrawText(
 	}
 
 	dc.BitBlt(m_rChart.left, m_rChart.top, m_rChart.Width(), m_rChart.Height(), &memDC, 0, 0, SRCCOPY);
@@ -452,4 +461,15 @@ void CChildView::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 COLORREF CChildView::GetTokenColor(llm::Tokenizer::TokenId id) const
 {
 	return token_colors[id % (sizeof(token_colors) / sizeof(COLORREF))];
+}
+
+void CChildView::OnShowInfo()
+{
+	m_bShowInfo = !m_bShowInfo;
+	InvalidateRect(m_rChart);
+}
+
+void CChildView::OnUpdateShowInfo(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_bShowInfo);
 }
