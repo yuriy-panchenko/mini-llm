@@ -2,13 +2,14 @@
 //
 // Per source file: genome files are ignored (or extracted with /dna), repeated head/tail
 // blocks are cut (/auto), Gutenberg head/tail is stripped (/gutten), whitespace is
-// normalized (/norm), and the result is appended to the combined corpus, saved as
+// normalized (/norm), long runs of one symbol are shortened (/combo), and the result is appended to the combined corpus, saved as
 // 'corpus.txt' with /big.
 //
 
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -25,6 +26,8 @@ struct Options
 	bool norm{ false }, dna{ false }, big{ false }, gutten{ false }, autoCut{ false };
 	double maxDigits{ 0 };   // /maxdigits=N: skip files with more than N% digits (0 = off)
 	size_t autoMin{ 0 };   // /auto=N: a line must repeat in N files to be boilerplate (0 = automatic)
+	bool combo{ false };
+	size_t comboMax{ 3 };   // /combo[=N]: runs of one symbol are cut down to N symbols
 };
 
 void print_default()
@@ -38,6 +41,9 @@ void print_default()
 		<< "\t/gutten\t- strip Guttenberg Library head and tail\n"
 		<< "\t/auto[=N]\t- find head/tail blocks repeated across files (any version) and cut them;\n"
 		<< "\t\t\t  N = in how many files a line must repeat (default 1% of files, at least 3)\n"
+		<< "\t/combo[=N]\t- shorten runs of more than N (default 3) identical special symbols\n"
+		<< "\t\t\t  ('------', '........', '=======', ...) to N symbols; letters, digits and\n"
+		<< "\t\t\t  spaces are never touched; a report per symbol is printed at the end\n"
 		<< "\t/maxdigits=N\t- skip files with more than N% digits (tables, number runs); the share is\n"
 		<< "\t\t\t  shown for every file\n"
 		<< endl;
@@ -93,6 +99,43 @@ string delta_str(size_t before, size_t after)
 	if (after == before)
 		return "0";
 	return after < before ? "-" + to_string(before - after) : "+" + to_string(after - before);
+}
+
+// "'.'" for printable ASCII, "U+2026 '…'" for the rest.
+string symbol_str(string const& sym)
+{
+	auto const [len, cp] { utf8_at(sym, 0) };
+	if (len == 1 && cp < 0x80)
+		return string{ "'" } + sym + "'";
+	char buf[16];
+	snprintf(buf, sizeof buf, "U+%04X", cp);
+	return string{ buf } + " '" + sym + "'";
+}
+
+// End report of /combo: which symbols were shortened, most removed first.
+void print_combo_report(ComboStats const& stats, size_t maxRun)
+{
+	cout << "\n=== Combo report (runs longer than " << maxRun << " cut to " << maxRun << ") ===\n";
+	if (stats.empty())
+	{
+		cout << "no runs found\n";
+		return;
+	}
+
+	vector<pair<string, ComboStat>> rows{ stats.begin(), stats.end() };
+	sort(rows.begin(), rows.end(), [](auto const& a, auto const& b)
+		{
+			return a.second.removed != b.second.removed ? a.second.removed > b.second.removed : a.first < b.first;
+		});
+
+	size_t runs{ 0 }, removed{ 0 };
+	for (auto const& [sym, st] : rows)
+	{
+		cout << "\t" << symbol_str(sym) << "\truns " << st.runs << "\tremoved " << st.removed << "\tlongest " << st.longest << '\n';
+		runs += st.runs;
+		removed += st.removed;
+	}
+	cout << "\ttotal\t" << rows.size() << " symbols, runs " << runs << ", removed " << removed << "\n";
 }
 
 // A folder gives its .txt files in a fixed (sorted) order, a file gives itself.
@@ -158,6 +201,25 @@ int main(int argc, char const* argv[])
 					return EXIT_FAILURE;
 				}
 			}
+			else if (flag == "combo")
+				opt.combo = true;
+			else if (flag.rfind("combo=", 0) == 0)
+			{
+				try
+				{
+					opt.comboMax = stoull(flag.substr(6));
+				}
+				catch (...)
+				{
+					opt.comboMax = 0;
+				}
+				if (opt.comboMax == 0)
+				{
+					cerr << "Error: /combo needs a value of 1 or more: " << arg << endl;
+					return EXIT_FAILURE;
+				}
+				opt.combo = true;
+			}
 			else if (flag == "auto")
 				opt.autoCut = true;
 			else if (flag.rfind("auto=", 0) == 0)
@@ -215,6 +277,7 @@ int main(int argc, char const* argv[])
 		<< "DNA files   : " << (opt.dna ? "used" : "ignored") << "\n"
 		<< "Del Gutten  : " << (opt.gutten ? "yes" : "no") << "\n"
 		<< "Auto head/tail: " << (opt.autoCut ? "yes" : "no") << "\n"
+		<< "Combo runs  : " << (opt.combo ? "max " + to_string(opt.comboMax) + " in a row" : "off") << "\n"
 		<< "Max digits  : " << (opt.maxDigits > 0 ? pct_str(opt.maxDigits) : "off") << "\n"
 		<< "Save corpus : " << (opt.big ? "yes" : "no") << "\n"
 		<< "=================\n" << endl;
@@ -276,6 +339,8 @@ int main(int argc, char const* argv[])
 	size_t charsIn{ 0 }, charsOut{ 0 };
 	size_t digitSkipped{ 0 }, digitSkippedChars{ 0 };
 	vector<pair<fs::path, double>> digitList;
+	ComboStats comboTotal;
+	size_t comboFiles{ 0 }, comboChars{ 0 };
 	size_t autoHeadFiles{ 0 }, autoTailFiles{ 0 }, autoHeadChars{ 0 }, autoTailChars{ 0 };
 
 	for (auto const& f : files)
@@ -312,7 +377,8 @@ int main(int argc, char const* argv[])
 		charsIn += sizeIn;
 
 		string note;
-		size_t headCut{ 0 }, tailCut{ 0 };
+		size_t headCut{ 0 }, tailCut{ 0 }, comboRemoved{ 0 };
+		ComboStats comboFile;
 		if (isDna)
 		{
 			text = extract_genome(text);
@@ -339,11 +405,16 @@ int main(int argc, char const* argv[])
 			}
 			if (opt.norm)
 				text = normalize_whitespace(text);
+			if (opt.combo)
+				comboRemoved = collapse_runs(text, opt.comboMax, &comboFile);
 		}
 
 		cout << '\t' << text.size() << " (" << delta_str(sizeIn, text.size()) << ")";
 		if (opt.autoCut && !isDna)
 			cout << "\thead -" << headCut << ", tail -" << tailCut;
+
+		if (opt.combo && !isDna)
+			cout << "\tcombo -" << comboRemoved;
 
 		double const digits{ isDna ? 0.0 : digit_share(text) };
 		if (!isDna)
@@ -363,6 +434,20 @@ int main(int argc, char const* argv[])
 			++digitSkipped;
 			digitList.emplace_back(f.filename(), digits);
 			continue;
+		}
+
+		// The file is part of the corpus now: its combo statistics count.
+		if (comboRemoved > 0)
+		{
+			++comboFiles;
+			comboChars += comboRemoved;
+			for (auto const& [sym, st] : comboFile)
+			{
+				auto& tot{ comboTotal[sym] };
+				tot.runs += st.runs;
+				tot.removed += st.removed;
+				tot.longest = max(tot.longest, st.longest);
+			}
 		}
 
 		if (text.empty())
@@ -399,8 +484,15 @@ int main(int argc, char const* argv[])
 	if (opt.autoCut)
 		cout << "Auto cut head    : " << autoHeadFiles << " files, " << autoHeadChars << " chars\n"
 		<< "Auto cut tail    : " << autoTailFiles << " files, " << autoTailChars << " chars\n";
+	if (opt.combo)
+		cout << "Combo cut        : " << comboChars << " symbols in " << comboFiles << " files (runs longer than " << opt.comboMax << ")\n";
 	cout << "Characters in    : " << charsIn << "\n"
 		<< "Characters out   : " << charsOut << " (" << delta_str(charsIn, charsOut) << ", file separators included)\n";
+
+	if (opt.combo)
+	{
+		print_combo_report(comboTotal, opt.comboMax);
+	}
 
 	for (auto const& [name, pct] : digitList)
 		cout << "\tskipped " << name << "\t" << pct_str(pct) << " digits\n";

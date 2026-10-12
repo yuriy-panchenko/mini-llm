@@ -1,6 +1,8 @@
 #pragma once
 #include <algorithm>
 #include <cctype>
+#include <cstring>
+#include <map>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -106,6 +108,94 @@ inline double digit_share(std::string const& text)
 			++digits;
 	}
 	return chars ? 100.0 * static_cast<double>(digits) / static_cast<double>(chars) : 0.0;
+}
+
+// Statistics of collapse_runs(), per symbol (the symbol itself as a UTF-8 string).
+struct ComboStat
+{
+	size_t runs{ 0 };      // how many runs were shortened
+	size_t removed{ 0 };   // how many symbols were cut away in total
+	size_t longest{ 0 };   // the longest run seen (before the cut)
+};
+using ComboStats = std::map<std::string, ComboStat>;
+
+// Length of the UTF-8 sequence at text[i] and its code point; {1, byte} for a stray/invalid byte.
+inline std::pair<size_t, unsigned> utf8_at(std::string const& text, size_t i)
+{
+	auto const b0{ static_cast<unsigned char>(text[i]) };
+	size_t len{ 1 };
+	unsigned cp{ b0 };
+	if (b0 >= 0xC2 && b0 <= 0xDF)
+		len = 2, cp = b0 & 0x1Fu;
+	else if (b0 >= 0xE0 && b0 <= 0xEF)
+		len = 3, cp = b0 & 0x0Fu;
+	else if (b0 >= 0xF0 && b0 <= 0xF4)
+		len = 4, cp = b0 & 0x07u;
+	if (len == 1 || i + len > text.size())
+		return { 1, b0 };
+	for (size_t k = 1; k < len; ++k)
+	{
+		auto const b{ static_cast<unsigned char>(text[i + k]) };
+		if ((b & 0xC0u) != 0x80u)
+			return { 1, b0 };
+		cp = (cp << 6) | (b & 0x3Fu);
+	}
+	return { len, cp };
+}
+
+// "Special symbol": ASCII punctuation, or common typographic / drawing symbols
+// (middle dot, general punctuation incl. dashes, bullets, ellipsis; box drawing, blocks, shapes).
+// Letters, digits and whitespace never count, so "sssss" / "00000" / blank runs are never touched.
+inline bool is_special_symbol(unsigned cp)
+{
+	if (cp < 0x80)
+		return std::ispunct(static_cast<int>(cp)) != 0;
+	return cp == 0xB7 || (cp >= 0x2010 && cp <= 0x205E) || (cp >= 0x2500 && cp <= 0x25FF);
+}
+
+// In place: every run of more than maxRun IDENTICAL special symbols ("------", "........",
+// "=======") is cut down to exactly maxRun symbols. Returns the number of symbols removed.
+// If stats is given, every shortened run is counted in it.
+inline size_t collapse_runs(std::string& text, size_t maxRun, ComboStats* stats = nullptr)
+{
+	size_t r{ 0 }, w{ 0 }, removedTotal{ 0 };
+	size_t const n{ text.size() };
+
+	while (r < n)
+	{
+		// fast path: letters, digits, whitespace, UTF-8 text that is not a symbol
+		auto const [len, cp] { utf8_at(text, r) };
+		if (!is_special_symbol(cp))
+		{
+			if (w != r)
+				std::memmove(&text[w], &text[r], len);
+			w += len;
+			r += len;
+			continue;
+		}
+
+		// count how many times the same sequence repeats
+		size_t count{ 1 };
+		while (r + (count + 1) * len <= n && std::memcmp(&text[r], &text[r + count * len], len) == 0)
+			++count;
+
+		size_t const keep{ count < maxRun ? count : maxRun };
+		if (count > maxRun && stats)   // before the move below can overwrite text[r]
+		{
+			auto& st{ (*stats)[text.substr(r, len)] };
+			++st.runs;
+			st.removed += count - maxRun;
+			st.longest = std::max(st.longest, count);
+		}
+		if (w != r)
+			std::memmove(&text[w], &text[r], keep * len);   // identical copies: the first 'keep' ones
+		removedTotal += count - keep;
+		w += keep * len;
+		r += count * len;
+	}
+
+	text.resize(w);
+	return removedTotal;
 }
 
 // Heuristic: does the file look like a raw nucleotide sequence? Looks at the first 64K
