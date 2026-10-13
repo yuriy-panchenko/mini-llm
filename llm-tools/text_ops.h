@@ -198,6 +198,171 @@ inline size_t collapse_runs(std::string& text, size_t maxRun, ComboStats* stats 
 	return removedTotal;
 }
 
+// Statistics of strip_prefixed(), per prefix.
+struct StripStat
+{
+	size_t blocks{ 0 };   // how many places were cut
+	size_t lines{ 0 };    // how many lines they spanned
+	size_t chars{ 0 };    // how many bytes were removed
+};
+using StripStats = std::map<std::string, StripStat>;
+
+// In place: drops every line that starts with one of the prefixes (leading blanks are ignored,
+// matching is case sensitive). A "[Footnote 12: ... ]" often runs over several lines, so for a
+// prefix that starts with '[' the block ends at the matching ']' (looked for in the next 40 lines;
+// if there is none, only the line itself is dropped). Text after the closing ']' on the same
+// line is kept. Returns the number of bytes removed.
+inline size_t strip_prefixed(std::string& text, std::vector<std::string> const& prefixes, StripStats* stats = nullptr)
+{
+	constexpr size_t kLookahead{ 40 };
+	size_t const n{ text.size() };
+	std::string out;
+	out.reserve(n);
+	size_t pos{ 0 }, removed{ 0 };
+
+	while (pos < n)
+	{
+		size_t const eol{ text.find('\n', pos) };
+		size_t const lineEnd{ eol == std::string::npos ? n : eol + 1 };   // includes the '\n'
+
+		size_t p{ pos };
+		while (p < lineEnd && (text[p] == ' ' || text[p] == '\t'))
+			++p;
+
+		std::string const* hit{ nullptr };
+		for (auto const& pre : prefixes)
+			if (!pre.empty() && text.compare(p, pre.size(), pre) == 0)
+			{
+				hit = &pre;
+				break;
+			}
+
+		if (!hit)
+		{
+			out.append(text, pos, lineEnd - pos);
+			pos = lineEnd;
+			continue;
+		}
+
+		size_t cutEnd{ lineEnd };
+		if ((*hit)[0] == '[')
+		{
+			int depth{ 0 };
+			size_t lines{ 0 }, q{ p };
+			bool closed{ false };
+			for (; q < n; ++q)
+			{
+				char const c{ text[q] };
+				if (c == '[')
+					++depth;
+				else if (c == ']' && --depth == 0)
+				{
+					closed = true;
+					break;
+				}
+				else if (c == '\n' && ++lines >= kLookahead)
+					break;
+			}
+			if (closed)
+			{
+				cutEnd = q + 1;
+				size_t t{ cutEnd };
+				while (t < n && (text[t] == ' ' || text[t] == '\t'))
+					++t;
+				if (t < n && text[t] == '\r')
+					++t;
+				if (t >= n)
+					cutEnd = n;
+				else if (text[t] == '\n')
+					cutEnd = t + 1;   // nothing else on the last line: take the line break too
+				else if (t > cutEnd)
+					cutEnd = t;       // text follows: keep it, without the blanks that separated it
+			}
+		}
+
+		if (stats)
+		{
+			auto& st{ (*stats)[*hit] };
+			++st.blocks;
+			st.lines += static_cast<size_t>(std::count(text.begin() + pos, text.begin() + cutEnd, '\n')) + (text[cutEnd - 1] == '\n' ? 0 : 1);
+			st.chars += cutEnd - pos;
+		}
+		removed += cutEnd - pos;
+		pos = cutEnd;
+	}
+
+	text.swap(out);
+	return removed;
+}
+
+// Long runs of ASCII digits found by long_digit_runs().
+struct DigitRuns
+{
+	size_t runs{ 0 };      // how many runs of minLen+ digits
+	size_t chars{ 0 };     // how many digits they hold in total
+	size_t longest{ 0 };
+	std::vector<std::string> samples;   // the first few runs (shortened), for the report
+};
+
+// In place: finds runs of at least minLen digits ("0503874373049"). With cut they are removed,
+// together with one blank so no double space is left where the number stood.
+inline DigitRuns long_digit_runs(std::string& text, size_t minLen, bool cut)
+{
+	constexpr size_t kSamples{ 3 }, kSampleLen{ 24 };
+	DigitRuns res;
+	size_t const n{ text.size() };
+	size_t r{ 0 }, w{ 0 };
+
+	while (r < n)
+	{
+		if (text[r] < '0' || text[r] > '9')
+		{
+			text[w++] = text[r++];
+			continue;
+		}
+
+		size_t e{ r };
+		while (e < n && text[e] >= '0' && text[e] <= '9')
+			++e;
+		size_t const len{ e - r };
+
+		if (len < minLen)
+		{
+			std::memmove(&text[w], &text[r], len);
+			w += len;
+			r = e;
+			continue;
+		}
+
+		++res.runs;
+		res.chars += len;
+		res.longest = std::max(res.longest, len);
+		if (res.samples.size() < kSamples)
+			res.samples.push_back(text.substr(r, std::min(len, kSampleLen)) + (len > kSampleLen ? "..." : ""));
+
+		if (cut)
+		{
+			r = e;
+			if (w > 0 && text[w - 1] == ' ')
+			{
+				if (r < n && text[r] == ' ')
+					++r;
+				else if (r >= n || text[r] == '\n' || text[r] == '\r')
+					--w;
+			}
+		}
+		else
+		{
+			std::memmove(&text[w], &text[r], len);
+			w += len;
+			r = e;
+		}
+	}
+
+	text.resize(w);
+	return res;
+}
+
 // Heuristic: does the file look like a raw nucleotide sequence? Looks at the first 64K
 // non-blank characters (FASTA '>' / ';' header lines skipped) and requires >=95% of them
 // to be uppercase A, C, G, T or N. Same alphabet extract_genome() works with: soft-masked

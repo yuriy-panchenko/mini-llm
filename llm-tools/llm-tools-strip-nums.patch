@@ -1,0 +1,487 @@
+diff --git a/llm-tools/llm-tools.cpp b/llm-tools/llm-tools.cpp
+index 2f7a742..41d0fe5 100644
+--- a/llm-tools/llm-tools.cpp
++++ b/llm-tools/llm-tools.cpp
+@@ -1,9 +1,10 @@
+ // llm-tools.cpp : prepares a text corpus (for gutlib / training).
+ //
+ // Per source file: genome files are ignored (or extracted with /dna), repeated head/tail
+-// blocks are cut (/auto), Gutenberg head/tail is stripped (/gutten), whitespace is
+-// normalized (/norm), long runs of one symbol are shortened (/combo), and the result is appended to the combined corpus, saved as
+-// 'corpus.txt' with /big.
++// blocks are cut (/auto), Gutenberg head/tail is stripped (/gutten), lines starting with given
++// prefixes are dropped (/strip), whitespace is normalized (/norm), long runs of one symbol are
++// shortened (/combo), long digit runs are reported or cut (/longnum, /cutnum), and the result is
++// appended to the combined corpus, saved as 'corpus.txt' with /big.
+ //
+ 
+ #include <algorithm>
+@@ -28,6 +29,9 @@ struct Options
+ 	size_t autoMin{ 0 };   // /auto=N: a line must repeat in N files to be boilerplate (0 = automatic)
+ 	bool combo{ false };
+ 	size_t comboMax{ 3 };   // /combo[=N]: runs of one symbol are cut down to N symbols
++	vector<string> strip;   // /strip[=PREFIX]: lines (or [...] blocks) starting with these are dropped
++	bool numScan{ false }, numCut{ false };   // /longnum[=N] reports, /cutnum[=N] also removes
++	size_t numMin{ 8 };     // ... runs of at least N digits
+ };
+ 
+ void print_default()
+@@ -44,6 +48,12 @@ void print_default()
+ 		<< "\t/combo[=N]\t- shorten runs of more than N (default 3) identical special symbols\n"
+ 		<< "\t\t\t  ('------', '........', '=======', ...) to N symbols; letters, digits and\n"
+ 		<< "\t\t\t  spaces are never touched; a report per symbol is printed at the end\n"
++		<< "\t/strip[=PREFIX]\t- drop lines that start with PREFIX (repeatable; leading blanks ignored, case\n"
++		<< "\t\t\t  sensitive). A PREFIX starting with '[' drops the whole bracketed block, even\n"
++		<< "\t\t\t  over several lines. Without =PREFIX: '[Footnote' and '[Illustration'\n"
++		<< "\t/longnum[=N]\t- report files with runs of N+ digits (default 8, at least 4), like\n"
++		<< "\t\t\t  '0503874373049'; nothing is changed\n"
++		<< "\t/cutnum[=N]\t- same, but the runs are removed from the corpus\n"
+ 		<< "\t/maxdigits=N\t- skip files with more than N% digits (tables, number runs); the share is\n"
+ 		<< "\t\t\t  shown for every file\n"
+ 		<< endl;
+@@ -57,6 +67,22 @@ string pct_str(double pct)
+ 	return buf;
+ }
+ 
++// "12" -> 12; anything else (sign, blanks, letters after the number) is refused.
++bool parse_count(string const& s, size_t& value)
++{
++	if (s.empty() || !all_of(s.begin(), s.end(), [](unsigned char c) { return isdigit(c) != 0; }))
++		return false;
++	try
++	{
++		value = stoull(s);
++	}
++	catch (...)
++	{
++		return false;
++	}
++	return true;
++}
++
+ // Binary read: no newline translation, so what is processed is what is on disk.
+ string read_file(fs::path const& fn)
+ {
+@@ -138,6 +164,87 @@ void print_combo_report(ComboStats const& stats, size_t maxRun)
+ 	cout << "\ttotal\t" << rows.size() << " symbols, runs " << runs << ", removed " << removed << "\n";
+ }
+ 
++// "'[Footnote', '[Illustration'"
++string join_quoted(vector<string> const& items)
++{
++	string res;
++	for (auto const& item : items)
++		res += (res.empty() ? "'" : ", '") + item + "'";
++	return res;
++}
++
++// End report of /strip: every requested prefix (also the ones that found nothing - a typo shows up).
++void print_strip_report(vector<string> const& prefixes, StripStats const& stats)
++{
++	cout << "\n=== Strip report ===\n";
++	vector<pair<string, StripStat>> rows;
++	for (auto const& pre : prefixes)
++	{
++		auto const it{ stats.find(pre) };
++		rows.emplace_back(pre, it == stats.end() ? StripStat{} : it->second);
++	}
++	stable_sort(rows.begin(), rows.end(), [](auto const& a, auto const& b) { return a.second.chars > b.second.chars; });
++
++	StripStat total;
++	for (auto const& [pre, st] : rows)
++	{
++		cout << "\t'" << pre << "'\tblocks " << st.blocks << "\tlines " << st.lines << "\tremoved " << st.chars << '\n';
++		total.blocks += st.blocks;
++		total.lines += st.lines;
++		total.chars += st.chars;
++	}
++	cout << "\ttotal\tblocks " << total.blocks << "\tlines " << total.lines << "\tremoved " << total.chars << '\n';
++}
++
++// One file with long digit runs.
++struct NumRow
++{
++	string name;
++	DigitRuns info;
++	bool skipped;   // dropped by /maxdigits, so not in the corpus
++};
++
++// End report of /longnum and /cutnum: which files hold long digit runs, most runs first.
++void print_numbers_report(vector<NumRow> rows, size_t minLen, bool cut)
++{
++	constexpr size_t kMaxRows{ 30 };
++	cout << "\n=== Long digit runs (" << minLen << "+ digits, " << (cut ? "removed" : "report only") << ") ===\n";
++	if (rows.empty())
++	{
++		cout << "no runs found\n";
++		return;
++	}
++
++	stable_sort(rows.begin(), rows.end(), [](NumRow const& a, NumRow const& b) { return a.info.runs > b.info.runs; });
++
++	size_t files{ 0 }, runs{ 0 }, chars{ 0 }, longest{ 0 };
++	for (auto const& r : rows)
++		if (!r.skipped)
++		{
++			++files;
++			runs += r.info.runs;
++			chars += r.info.chars;
++			longest = max(longest, r.info.longest);
++		}
++
++	size_t shown{ 0 };
++	for (auto const& r : rows)
++	{
++		if (shown++ == kMaxRows)
++		{
++			cout << "\t... and " << rows.size() - kMaxRows << " more files\n";
++			break;
++		}
++		cout << '\t' << r.name << "\truns " << r.info.runs << "\tlongest " << r.info.longest << "\tdigits " << r.info.chars << "\te.g.";
++		for (auto const& smp : r.info.samples)
++			cout << ' ' << smp;
++		if (r.skipped)
++			cout << "\t(file skipped: too many digits)";
++		cout << '\n';
++	}
++	cout << "\tin the corpus: " << files << " files, runs " << runs << ", digits " << chars << ", longest " << longest << '\n';
++}
++
+ // A folder gives its .txt files in a fixed (sorted) order, a file gives itself.
+ vector<fs::path> collect_files(fs::path const& src)
+ {
+@@ -220,6 +327,39 @@ int main(int argc, char const* argv[])
+ 				}
+ 				opt.combo = true;
+ 			}
++			else if (flag == "strip")
++			{
++				for (char const* pre : { "[Footnote", "[Illustration" })
++					if (find(opt.strip.begin(), opt.strip.end(), pre) == opt.strip.end())
++						opt.strip.emplace_back(pre);
++			}
++			else if (flag.rfind("strip=", 0) == 0)
++			{
++				string const prefix{ arg.substr(7) };   // keeps the case: '/strip=' is 7 characters
++				if (prefix.empty())
++				{
++					cerr << "Error: /strip needs a prefix: " << arg << endl;
++					return EXIT_FAILURE;
++				}
++				if (find(opt.strip.begin(), opt.strip.end(), prefix) == opt.strip.end())
++					opt.strip.push_back(prefix);
++			}
++			else if (flag == "longnum" || flag == "cutnum" || flag.rfind("longnum=", 0) == 0 || flag.rfind("cutnum=", 0) == 0)
++			{
++				auto const eq{ flag.find('=') };
++				if (eq != string::npos)
++				{
++					size_t v{ 0 };
++					if (!parse_count(flag.substr(eq + 1), v) || v < 4)
++					{
++						cerr << "Error: /longnum and /cutnum need a value of 4 or more: " << arg << endl;
++						return EXIT_FAILURE;
++					}
++					opt.numMin = v;
++				}
++				opt.numScan = true;
++				opt.numCut = opt.numCut || flag.front() == 'c';
++			}
+ 			else if (flag == "auto")
+ 				opt.autoCut = true;
+ 			else if (flag.rfind("auto=", 0) == 0)
+@@ -278,6 +418,8 @@ int main(int argc, char const* argv[])
+ 		<< "Del Gutten  : " << (opt.gutten ? "yes" : "no") << "\n"
+ 		<< "Auto head/tail: " << (opt.autoCut ? "yes" : "no") << "\n"
+ 		<< "Combo runs  : " << (opt.combo ? "max " + to_string(opt.comboMax) + " in a row" : "off") << "\n"
++		<< "Strip lines  : " << (opt.strip.empty() ? "off" : join_quoted(opt.strip)) << "\n"
++		<< "Long numbers: " << (!opt.numScan ? "off" : string{ opt.numCut ? "cut" : "report only" } + ", " + to_string(opt.numMin) + "+ digits") << "\n"
+ 		<< "Max digits  : " << (opt.maxDigits > 0 ? pct_str(opt.maxDigits) : "off") << "\n"
+ 		<< "Save corpus : " << (opt.big ? "yes" : "no") << "\n"
+ 		<< "=================\n" << endl;
+@@ -340,6 +482,9 @@ int main(int argc, char const* argv[])
+ 	size_t digitSkipped{ 0 }, digitSkippedChars{ 0 };
+ 	vector<pair<fs::path, double>> digitList;
+ 	ComboStats comboTotal;
++	StripStats stripTotal;
++	size_t stripFiles{ 0 }, stripChars{ 0 };
++	vector<NumRow> numRows;
+ 	size_t comboFiles{ 0 }, comboChars{ 0 };
+ 	size_t autoHeadFiles{ 0 }, autoTailFiles{ 0 }, autoHeadChars{ 0 }, autoTailChars{ 0 };
+ 
+@@ -379,6 +524,9 @@ int main(int argc, char const* argv[])
+ 		string note;
+ 		size_t headCut{ 0 }, tailCut{ 0 }, comboRemoved{ 0 };
+ 		ComboStats comboFile;
++		StripStats stripFile;
++		size_t stripRemoved{ 0 };
++		DigitRuns numInfo;
+ 		if (isDna)
+ 		{
+ 			text = extract_genome(text);
+@@ -403,19 +551,33 @@ int main(int argc, char const* argv[])
+ 				++noMarkers;
+ 				note = headCut || tailCut ? "no Gutenberg markers" : "no Gutenberg markers, kept as is";
+ 			}
++			if (!opt.strip.empty())
++				stripRemoved = strip_prefixed(text, opt.strip, &stripFile);
+ 			if (opt.norm)
+ 				text = normalize_whitespace(text);
+ 			if (opt.combo)
+ 				comboRemoved = collapse_runs(text, opt.comboMax, &comboFile);
++			if (opt.numScan)
++				numInfo = long_digit_runs(text, opt.numMin, opt.numCut);
+ 		}
+ 
+ 		cout << '\t' << text.size() << " (" << delta_str(sizeIn, text.size()) << ")";
+ 		if (opt.autoCut && !isDna)
+ 			cout << "\thead -" << headCut << ", tail -" << tailCut;
+ 
++		if (!opt.strip.empty() && !isDna)
++			cout << "\tstrip -" << stripRemoved;
++
+ 		if (opt.combo && !isDna)
+ 			cout << "\tcombo -" << comboRemoved;
+ 
++		if (opt.numScan && !isDna)
++		{
++			cout << "\tnums " << numInfo.runs;
++			if (opt.numCut && numInfo.runs > 0)
++				cout << " (-" << numInfo.chars << ")";
++		}
++
+ 		double const digits{ isDna ? 0.0 : digit_share(text) };
+ 		if (!isDna)
+ 			cout << '\t' << pct_str(digits) << " digits";
+@@ -427,6 +589,9 @@ int main(int argc, char const* argv[])
+ 			cout << "\tSKIPPED: too many digits";
+ 		cout << '\n';
+ 
++		if (numInfo.runs > 0)
++			numRows.push_back({ f.filename().string(), numInfo, tooManyDigits });
++
+ 		if (tooManyDigits)
+ 		{
+ 			charsIn -= sizeIn;   // not part of the corpus, so not a "loss" either
+@@ -436,7 +601,19 @@ int main(int argc, char const* argv[])
+ 			continue;
+ 		}
+ 
+-		// The file is part of the corpus now: its combo statistics count.
++		// The file is part of the corpus now: its strip and combo statistics count.
++		if (stripRemoved > 0)
++		{
++			++stripFiles;
++			stripChars += stripRemoved;
++			for (auto const& [pre, st] : stripFile)
++			{
++				auto& tot{ stripTotal[pre] };
++				tot.blocks += st.blocks;
++				tot.lines += st.lines;
++				tot.chars += st.chars;
++			}
++		}
+ 		if (comboRemoved > 0)
+ 		{
+ 			++comboFiles;
+@@ -484,16 +661,24 @@ int main(int argc, char const* argv[])
+ 	if (opt.autoCut)
+ 		cout << "Auto cut head    : " << autoHeadFiles << " files, " << autoHeadChars << " chars\n"
+ 		<< "Auto cut tail    : " << autoTailFiles << " files, " << autoTailChars << " chars\n";
++	if (!opt.strip.empty())
++		cout << "Strip cut        : " << stripChars << " chars in " << stripFiles << " files\n";
+ 	if (opt.combo)
+ 		cout << "Combo cut        : " << comboChars << " symbols in " << comboFiles << " files (runs longer than " << opt.comboMax << ")\n";
+ 	cout << "Characters in    : " << charsIn << "\n"
+ 		<< "Characters out   : " << charsOut << " (" << delta_str(charsIn, charsOut) << ", file separators included)\n";
+ 
++	if (!opt.strip.empty())
++		print_strip_report(opt.strip, stripTotal);
++
+ 	if (opt.combo)
+ 	{
+ 		print_combo_report(comboTotal, opt.comboMax);
+ 	}
+ 
++	if (opt.numScan)
++		print_numbers_report(numRows, opt.numMin, opt.numCut);
++
+ 	for (auto const& [name, pct] : digitList)
+ 		cout << "\tskipped " << name << "\t" << pct_str(pct) << " digits\n";
+ 
+diff --git a/llm-tools/text_ops.h b/llm-tools/text_ops.h
+index c681d84..15fe56c 100644
+--- a/llm-tools/text_ops.h
++++ b/llm-tools/text_ops.h
+@@ -198,6 +198,171 @@ inline size_t collapse_runs(std::string& text, size_t maxRun, ComboStats* stats
+ 	return removedTotal;
+ }
+ 
++// Statistics of strip_prefixed(), per prefix.
++struct StripStat
++{
++	size_t blocks{ 0 };   // how many places were cut
++	size_t lines{ 0 };    // how many lines they spanned
++	size_t chars{ 0 };    // how many bytes were removed
++};
++using StripStats = std::map<std::string, StripStat>;
++
++// In place: drops every line that starts with one of the prefixes (leading blanks are ignored,
++// matching is case sensitive). A "[Footnote 12: ... ]" often runs over several lines, so for a
++// prefix that starts with '[' the block ends at the matching ']' (looked for in the next 40 lines;
++// if there is none, only the line itself is dropped). Text after the closing ']' on the same
++// line is kept. Returns the number of bytes removed.
++inline size_t strip_prefixed(std::string& text, std::vector<std::string> const& prefixes, StripStats* stats = nullptr)
++{
++	constexpr size_t kLookahead{ 40 };
++	size_t const n{ text.size() };
++	std::string out;
++	out.reserve(n);
++	size_t pos{ 0 }, removed{ 0 };
++
++	while (pos < n)
++	{
++		size_t const eol{ text.find('\n', pos) };
++		size_t const lineEnd{ eol == std::string::npos ? n : eol + 1 };   // includes the '\n'
++
++		size_t p{ pos };
++		while (p < lineEnd && (text[p] == ' ' || text[p] == '\t'))
++			++p;
++
++		std::string const* hit{ nullptr };
++		for (auto const& pre : prefixes)
++			if (!pre.empty() && text.compare(p, pre.size(), pre) == 0)
++			{
++				hit = &pre;
++				break;
++			}
++
++		if (!hit)
++		{
++			out.append(text, pos, lineEnd - pos);
++			pos = lineEnd;
++			continue;
++		}
++
++		size_t cutEnd{ lineEnd };
++		if ((*hit)[0] == '[')
++		{
++			int depth{ 0 };
++			size_t lines{ 0 }, q{ p };
++			bool closed{ false };
++			for (; q < n; ++q)
++			{
++				char const c{ text[q] };
++				if (c == '[')
++					++depth;
++				else if (c == ']' && --depth == 0)
++				{
++					closed = true;
++					break;
++				}
++				else if (c == '\n' && ++lines >= kLookahead)
++					break;
++			}
++			if (closed)
++			{
++				cutEnd = q + 1;
++				size_t t{ cutEnd };
++				while (t < n && (text[t] == ' ' || text[t] == '\t'))
++					++t;
++				if (t < n && text[t] == '\r')
++					++t;
++				if (t >= n)
++					cutEnd = n;
++				else if (text[t] == '\n')
++					cutEnd = t + 1;   // nothing else on the last line: take the line break too
++				else if (t > cutEnd)
++					cutEnd = t;       // text follows: keep it, without the blanks that separated it
++			}
++		}
++
++		if (stats)
++		{
++			auto& st{ (*stats)[*hit] };
++			++st.blocks;
++			st.lines += static_cast<size_t>(std::count(text.begin() + pos, text.begin() + cutEnd, '\n')) + (text[cutEnd - 1] == '\n' ? 0 : 1);
++			st.chars += cutEnd - pos;
++		}
++		removed += cutEnd - pos;
++		pos = cutEnd;
++	}
++
++	text.swap(out);
++	return removed;
++}
++
++// Long runs of ASCII digits found by long_digit_runs().
++struct DigitRuns
++{
++	size_t runs{ 0 };      // how many runs of minLen+ digits
++	size_t chars{ 0 };     // how many digits they hold in total
++	size_t longest{ 0 };
++	std::vector<std::string> samples;   // the first few runs (shortened), for the report
++};
++
++// In place: finds runs of at least minLen digits ("0503874373049"). With cut they are removed,
++// together with one blank so no double space is left where the number stood.
++inline DigitRuns long_digit_runs(std::string& text, size_t minLen, bool cut)
++{
++	constexpr size_t kSamples{ 3 }, kSampleLen{ 24 };
++	DigitRuns res;
++	size_t const n{ text.size() };
++	size_t r{ 0 }, w{ 0 };
++
++	while (r < n)
++	{
++		if (text[r] < '0' || text[r] > '9')
++		{
++			text[w++] = text[r++];
++			continue;
++		}
++
++		size_t e{ r };
++		while (e < n && text[e] >= '0' && text[e] <= '9')
++			++e;
++		size_t const len{ e - r };
++
++		if (len < minLen)
++		{
++			std::memmove(&text[w], &text[r], len);
++			w += len;
++			r = e;
++			continue;
++		}
++
++		++res.runs;
++		res.chars += len;
++		res.longest = std::max(res.longest, len);
++		if (res.samples.size() < kSamples)
++			res.samples.push_back(text.substr(r, std::min(len, kSampleLen)) + (len > kSampleLen ? "..." : ""));
++
++		if (cut)
++		{
++			r = e;
++			if (w > 0 && text[w - 1] == ' ')
++			{
++				if (r < n && text[r] == ' ')
++					++r;
++				else if (r >= n || text[r] == '\n' || text[r] == '\r')
++					--w;
++			}
++		}
++		else
++		{
++			std::memmove(&text[w], &text[r], len);
++			w += len;
++			r = e;
++		}
++	}
++
++	text.resize(w);
++	return res;
++}
++
+ // Heuristic: does the file look like a raw nucleotide sequence? Looks at the first 64K
+ // non-blank characters (FASTA '>' / ';' header lines skipped) and requires >=95% of them
+ // to be uppercase A, C, G, T or N. Same alphabet extract_genome() works with: soft-masked

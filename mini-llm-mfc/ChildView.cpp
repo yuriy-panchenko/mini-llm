@@ -14,7 +14,7 @@
 constexpr COLORREF token_colors[] =
 {
 	RGB(163,177,255), RGB(122,255,122), RGB(255,182,122), RGB(122,255,248),
-	RGB(255,255,122), RGB(247,151,185), RGB(244,143,255), RGB(243,251,208),
+	RGB(247,151,185), RGB(255,255,122), RGB(244,143,255), RGB(243,251,208),
 	RGB(194,222,244), RGB(142,235,165), RGB(234,191,184), RGB(251,208,251),
 	RGB(255,154,143), RGB(255,227,143), RGB(199,255,143), RGB(225,170,248),
 	RGB(122,202,255), RGB(168,230,196), RGB(196,225,152), RGB(255,143,216),
@@ -447,7 +447,9 @@ void CChildView::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 			rect.left = rect.right;
 			rect.right += r.Width();
 
-			dc.SetBkColor(GetTokenColor(*itToken));
+			dc.SetBkColor(nIDCtl == ID_LIST_SLOW
+				? GetTokenColor(*itToken)
+				: GetTokenColor(std::distance(tokens.begin(), itToken) % (sizeof(token_colors) / sizeof(COLORREF))));
 			dc.DrawText(s, rect, DT_SINGLELINE);
 
 			++itToken;
