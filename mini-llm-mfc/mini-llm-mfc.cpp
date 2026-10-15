@@ -116,7 +116,8 @@ BOOL CMiniLLMApp::InitInstance()
 	pFrame->ShowWindow(m_nCmdShow);
 	pFrame->UpdateWindow();
 
-	OnFileNew();
+	if (!pFrame->MDIGetActive())
+		OnFileNew();
 	return TRUE;
 }
 

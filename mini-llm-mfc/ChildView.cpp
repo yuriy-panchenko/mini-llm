@@ -521,3 +521,20 @@ void CChildView::OnUpdateShowInfo(CCmdUI* pCmdUI)
 {
 	pCmdUI->SetCheck(m_bShowInfo);
 }
+
+void CChildView::Serialize(CArchive& ar)
+{
+	if (ar.IsStoring())
+	{
+		//m_FastList.Serialize(ar);
+		//m_SlowList.Serialize(ar);
+		//CWorkerThread* m_pTh;
+		//std::vector<double> m_LossData, m_MA50, m_ValData;   // m_MA50[i] pairs with m_LossData[i]; m_ValData[i] is step i*slow_mod
+		//double m_MA50Sum{ 0 };
+		//std::vector<std::pair<size_t, double>> m_LrMarks;   // (loss index, new learning rate) for every change
+		//BOOL m_bShowAll, m_bShowMA50, m_bShowZero, m_bShowInfo;
+	}
+	else
+	{	// loading code
+	}
+}

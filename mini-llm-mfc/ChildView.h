@@ -19,6 +19,7 @@ public:
 	void Initialize(CNetSettingsDlg const&);
 	// Attributes
 public:
+	virtual void Serialize(CArchive& ar);
 
 	// Operations
 public:

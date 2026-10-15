@@ -43,4 +43,7 @@ protected:
 	afx_msg void OnSetFocus(CWnd* pOldWnd);
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
 	DECLARE_MESSAGE_MAP()
+public:
+	virtual BOOL DestroyWindow();
+	virtual void PostNcDestroy();
 };

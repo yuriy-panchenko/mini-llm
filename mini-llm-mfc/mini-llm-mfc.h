@@ -4,7 +4,7 @@
 #pragma once
 
 #ifndef __AFXWIN_H__
-	#error "include 'pch.h' before including this file for PCH"
+#error "include 'pch.h' before including this file for PCH"
 #endif
 
 #include "resource.h"       // main symbols
@@ -22,13 +22,15 @@ class CMiniLLMApp : public CWinApp
 public:
 	CMiniLLMApp() noexcept;
 
+	HMENU  GetMDIMenu()const { return m_hMDIMenu; }
+	HACCEL GetMDIAccel()const { return m_hMDIAccel; }
 
-// Overrides
+	// Overrides
 public:
 	virtual BOOL InitInstance();
 	virtual int ExitInstance();
 
-// Implementation
+	// Implementation
 protected:
 	HMENU  m_hMDIMenu;
 	HACCEL m_hMDIAccel;

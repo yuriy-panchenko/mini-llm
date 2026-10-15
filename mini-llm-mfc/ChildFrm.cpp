@@ -99,3 +99,17 @@ BOOL CChildFrame::OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO
 	// otherwise, do default handling
 	return CMDIChildWnd::OnCmdMsg(nID, nCode, pExtra, pHandlerInfo);
 }
+
+BOOL CChildFrame::DestroyWindow()
+{
+	// TODO: Add your specialized code here and/or call the base class
+
+	return CMDIChildWnd::DestroyWindow();
+}
+
+void CChildFrame::PostNcDestroy()
+{
+	// TODO: Add your specialized code here and/or call the base class
+
+	CMDIChildWnd::PostNcDestroy();
+}
