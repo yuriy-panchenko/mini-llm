@@ -6,6 +6,7 @@
 #include "framework.h"
 #include "mini-llm-mfc.h"
 #include "ChildView.h"
+#include <algorithm>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -72,6 +73,29 @@ END_MESSAGE_MAP()
 
 // CChildView message handlers
 
+// Ctrl+Up / Ctrl+Down: learning rate x2 / x0.5; with Shift x10 / x0.1 (the "decay test": load a
+// checkpoint, press Ctrl+Shift+Down once and watch Val). Works while a list has the focus.
+BOOL CChildView::PreTranslateMessage(MSG* pMsg)
+{
+	if (pMsg->message == WM_KEYDOWN && m_pTh && (::GetKeyState(VK_CONTROL) & 0x8000)
+		&& (pMsg->wParam == VK_UP || pMsg->wParam == VK_DOWN))
+	{
+		bool const up{ pMsg->wParam == VK_UP }, big{ (::GetKeyState(VK_SHIFT) & 0x8000) != 0 };
+		ChangeLcoo(big ? (up ? 10. : .1) : (up ? 2. : .5));
+		return TRUE;
+	}
+	return CWnd::PreTranslateMessage(pMsg);
+}
+
+void CChildView::ChangeLcoo(double factor)
+{
+	ASSERT(m_pTh);
+	auto const lr{ (std::clamp)(m_pTh->GetLcoo() * factor, 1e-8, 1.0) };
+	m_pTh->SetLcoo(lr);
+	m_LrMarks.emplace_back(m_LossData.size(), lr);
+	InvalidateRect(m_rChart);
+}
+
 BOOL CChildView::PreCreateWindow(CREATESTRUCT& cs)
 {
 	if (!CWnd::PreCreateWindow(cs))
@@ -122,6 +146,8 @@ void CChildView::OnPaint()
 			s.AppendFormat(_T("  MA50 %.4f"), m_MA50.back());
 			if (!m_ValData.empty())
 				s.AppendFormat(_T("  Val %.4f"), m_ValData.back());
+			if (m_pTh)
+				s.AppendFormat(_T("  LR %g"), m_pTh->GetLcoo());
 			CFont font;
 			font.CreatePointFont(90, _T("Consolas"));
 			memDC.SelectObject(font);
@@ -191,6 +217,26 @@ void CChildView::OnPaint()
 					started = true;
 				}
 				memDC.SelectObject(pen);
+			}
+
+			// Learning-rate changes (Ctrl+Up/Down): dotted magenta line at that step, labelled with the new rate.
+			if (!m_LrMarks.empty())
+			{
+				CPen penLr{ PS_DOT, 1, RGB(255, 80, 255) };
+				memDC.SelectObject(penLr);
+				memDC.SetTextColor(RGB(255, 120, 255));
+				for (auto const& [idx, lr] : m_LrMarks)
+				{
+					if (idx < from || idx > m_LossData.size())
+						continue;
+					int const x{ toX(idx) };
+					memDC.MoveTo(x, 0);
+					memDC.LineTo(x, m_rChart.Height());
+					CString t;
+					t.Format(_T("%g"), lr);
+					memDC.TextOut(x + 3, 22, t);
+				}
+				memDC.SelectObject(pen);   // deselect before penLr is destroyed
 			}
 		}
 	}

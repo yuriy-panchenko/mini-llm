@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <mutex>
 // CWorkerThread
 class CNetSettingsDlg;
@@ -21,6 +22,8 @@ public:
 	CString GetText(BOOL isFast);
 	std::vector<double> GetLoss();
 	std::vector<double> GetVal();   // validation loss, one entry per slow_mod steps
+	void SetLcoo(double v) { m_Lcoo = v; }   // learning rate, may be changed while training runs
+	double GetLcoo() const { return m_Lcoo; }
 	std::vector<llm::Tokenizer::TokenId> Encode(llm::Tokenizer::String const&)const;
 	std::vector<llm::Tokenizer::String> DecodeApart(std::vector<llm::Tokenizer::TokenId> const&)const;
 
@@ -46,7 +49,7 @@ private:
 	llm::Model<llm::MultiHeadAttention> m_Model;
 	std::vector<llm::Tokenizer::TokenId> m_AllIds;
 	size_t m_CTX, m_uStep;
-	double m_Lcoo;
+	std::atomic<double> m_Lcoo{ 0.001 };   // written by the UI thread, read by the worker
 	std::string m_Sample;
 
 	mutable std::mutex m_Mtx;

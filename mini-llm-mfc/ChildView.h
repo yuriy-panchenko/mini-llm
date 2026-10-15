@@ -26,6 +26,7 @@ public:
 	// Overrides
 protected:
 	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
+	virtual BOOL PreTranslateMessage(MSG* pMsg);   // Ctrl+Up/Down: change the learning rate
 
 	// Implementation
 public:
@@ -55,6 +56,7 @@ protected:
 
 private:
 	COLORREF GetTokenColor(llm::Tokenizer::TokenId)const;
+	void ChangeLcoo(double factor);
 
 private:
 	CRect m_rCanvas, m_rChart;
@@ -62,6 +64,7 @@ private:
 	CWorkerThread* m_pTh;
 	std::vector<double> m_LossData, m_MA50, m_ValData;   // m_MA50[i] pairs with m_LossData[i]; m_ValData[i] is step i*slow_mod
 	double m_MA50Sum{ 0 };
+	std::vector<std::pair<size_t, double>> m_LrMarks;   // (loss index, new learning rate) for every change
 	BOOL m_bShowAll,m_bShowMA50,m_bShowZero,m_bShowInfo;
 };
 

@@ -144,7 +144,7 @@ void CWorkerThread::OnNextStep(WPARAM, LPARAM)
 	SetLoss(cross_entropy(logits, y));
 	m_Model.zero_grad();
 	m_Model.backward(cross_entropy_backward(logits, y));
-	m_Model.update((llm::scalar)m_Lcoo);
+	m_Model.update(static_cast<llm::scalar>(m_Lcoo.load()));
 
 	if (!(m_uStep % fast_mod))
 	{

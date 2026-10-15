@@ -1,0 +1,147 @@
+diff --git a/mini-llm-mfc/CWorkerThread.cpp b/mini-llm-mfc/CWorkerThread.cpp
+index c526f36..10cddb8 100644
+--- a/mini-llm-mfc/CWorkerThread.cpp
++++ b/mini-llm-mfc/CWorkerThread.cpp
+@@ -144,7 +144,7 @@ void CWorkerThread::OnNextStep(WPARAM, LPARAM)
+ 	SetLoss(cross_entropy(logits, y));
+ 	m_Model.zero_grad();
+ 	m_Model.backward(cross_entropy_backward(logits, y));
+-	m_Model.update((llm::scalar)m_Lcoo);
++	m_Model.update(static_cast<llm::scalar>(m_Lcoo.load()));
+ 
+ 	if (!(m_uStep % fast_mod))
+ 	{
+diff --git a/mini-llm-mfc/CWorkerThread.h b/mini-llm-mfc/CWorkerThread.h
+index b132d77..5bd625b 100644
+--- a/mini-llm-mfc/CWorkerThread.h
++++ b/mini-llm-mfc/CWorkerThread.h
+@@ -1,4 +1,5 @@
+ #pragma once
++#include <atomic>
+ #include <mutex>
+ // CWorkerThread
+ class CNetSettingsDlg;
+@@ -21,6 +22,8 @@ public:
+ 	CString GetText(BOOL isFast);
+ 	std::vector<double> GetLoss();
+ 	std::vector<double> GetVal();   // validation loss, one entry per slow_mod steps
++	void SetLcoo(double v) { m_Lcoo = v; }   // learning rate, may be changed while training runs
++	double GetLcoo() const { return m_Lcoo; }
+ 	std::vector<llm::Tokenizer::TokenId> Encode(llm::Tokenizer::String const&)const;
+ 	std::vector<llm::Tokenizer::String> DecodeApart(std::vector<llm::Tokenizer::TokenId> const&)const;
+ 
+@@ -46,7 +49,7 @@ private:
+ 	llm::Model<llm::MultiHeadAttention> m_Model;
+ 	std::vector<llm::Tokenizer::TokenId> m_AllIds;
+ 	size_t m_CTX, m_uStep;
+-	double m_Lcoo;
++	std::atomic<double> m_Lcoo{ 0.001 };   // written by the UI thread, read by the worker
+ 	std::string m_Sample;
+ 
+ 	mutable std::mutex m_Mtx;
+diff --git a/mini-llm-mfc/ChildView.cpp b/mini-llm-mfc/ChildView.cpp
+index 732f818..f0e9b52 100644
+--- a/mini-llm-mfc/ChildView.cpp
++++ b/mini-llm-mfc/ChildView.cpp
+@@ -6,6 +6,7 @@
+ #include "framework.h"
+ #include "mini-llm-mfc.h"
+ #include "ChildView.h"
++#include <algorithm>
+ 
+ #ifdef _DEBUG
+ #define new DEBUG_NEW
+@@ -72,6 +73,29 @@ END_MESSAGE_MAP()
+ 
+ // CChildView message handlers
+ 
++// Ctrl+Up / Ctrl+Down: learning rate x2 / x0.5; with Shift x10 / x0.1 (the "decay test": load a
++// checkpoint, press Ctrl+Shift+Down once and watch Val). Works while a list has the focus.
++BOOL CChildView::PreTranslateMessage(MSG* pMsg)
++{
++	if (pMsg->message == WM_KEYDOWN && m_pTh && (::GetKeyState(VK_CONTROL) & 0x8000)
++		&& (pMsg->wParam == VK_UP || pMsg->wParam == VK_DOWN))
++	{
++		bool const up{ pMsg->wParam == VK_UP }, big{ (::GetKeyState(VK_SHIFT) & 0x8000) != 0 };
++		ChangeLcoo(big ? (up ? 10. : .1) : (up ? 2. : .5));
++		return TRUE;
++	}
++	return CWnd::PreTranslateMessage(pMsg);
++}
++
++void CChildView::ChangeLcoo(double factor)
++{
++	ASSERT(m_pTh);
++	auto const lr{ (std::clamp)(m_pTh->GetLcoo() * factor, 1e-8, 1.0) };
++	m_pTh->SetLcoo(lr);
++	m_LrMarks.emplace_back(m_LossData.size(), lr);
++	InvalidateRect(m_rChart);
++}
++
+ BOOL CChildView::PreCreateWindow(CREATESTRUCT& cs)
+ {
+ 	if (!CWnd::PreCreateWindow(cs))
+@@ -122,6 +146,8 @@ void CChildView::OnPaint()
+ 			s.AppendFormat(_T("  MA50 %.4f"), m_MA50.back());
+ 			if (!m_ValData.empty())
+ 				s.AppendFormat(_T("  Val %.4f"), m_ValData.back());
++			if (m_pTh)
++				s.AppendFormat(_T("  LR %g"), m_pTh->GetLcoo());
+ 			CFont font;
+ 			font.CreatePointFont(90, _T("Consolas"));
+ 			memDC.SelectObject(font);
+@@ -192,6 +218,26 @@ void CChildView::OnPaint()
+ 				}
+ 				memDC.SelectObject(pen);
+ 			}
++
++			// Learning-rate changes (Ctrl+Up/Down): dotted magenta line at that step, labelled with the new rate.
++			if (!m_LrMarks.empty())
++			{
++				CPen penLr{ PS_DOT, 1, RGB(255, 80, 255) };
++				memDC.SelectObject(penLr);
++				memDC.SetTextColor(RGB(255, 120, 255));
++				for (auto const& [idx, lr] : m_LrMarks)
++				{
++					if (idx < from || idx > m_LossData.size())
++						continue;
++					int const x{ toX(idx) };
++					memDC.MoveTo(x, 0);
++					memDC.LineTo(x, m_rChart.Height());
++					CString t;
++					t.Format(_T("%g"), lr);
++					memDC.TextOut(x + 3, 22, t);
++				}
++				memDC.SelectObject(pen);   // deselect before penLr is destroyed
++			}
+ 		}
+ 	}
+ 
+diff --git a/mini-llm-mfc/ChildView.h b/mini-llm-mfc/ChildView.h
+index 998a23d..85df2b5 100644
+--- a/mini-llm-mfc/ChildView.h
++++ b/mini-llm-mfc/ChildView.h
+@@ -26,6 +26,7 @@ public:
+ 	// Overrides
+ protected:
+ 	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
++	virtual BOOL PreTranslateMessage(MSG* pMsg);   // Ctrl+Up/Down: change the learning rate
+ 
+ 	// Implementation
+ public:
+@@ -55,6 +56,7 @@ protected:
+ 
+ private:
+ 	COLORREF GetTokenColor(llm::Tokenizer::TokenId)const;
++	void ChangeLcoo(double factor);
+ 
+ private:
+ 	CRect m_rCanvas, m_rChart;
+@@ -62,6 +64,7 @@ private:
+ 	CWorkerThread* m_pTh;
+ 	std::vector<double> m_LossData, m_MA50, m_ValData;   // m_MA50[i] pairs with m_LossData[i]; m_ValData[i] is step i*slow_mod
+ 	double m_MA50Sum{ 0 };
++	std::vector<std::pair<size_t, double>> m_LrMarks;   // (loss index, new learning rate) for every change
+ 	BOOL m_bShowAll,m_bShowMA50,m_bShowZero,m_bShowInfo;
+ };
+ 
