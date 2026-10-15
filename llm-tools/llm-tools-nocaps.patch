@@ -1,0 +1,246 @@
+diff --git a/llm-tools/llm-tools.cpp b/llm-tools/llm-tools.cpp
+index 41d0fe5..9f4a0e4 100644
+--- a/llm-tools/llm-tools.cpp
++++ b/llm-tools/llm-tools.cpp
+@@ -2,7 +2,7 @@
+ //
+ // Per source file: genome files are ignored (or extracted with /dna), repeated head/tail
+ // blocks are cut (/auto), Gutenberg head/tail is stripped (/gutten), lines starting with given
+-// prefixes are dropped (/strip), whitespace is normalized (/norm), long runs of one symbol are
++// prefixes are dropped (/strip), mostly-capital lines are dropped (/nocaps), whitespace is normalized (/norm), long runs of one symbol are
+ // shortened (/combo), long digit runs are reported or cut (/longnum, /cutnum), and the result is
+ // appended to the combined corpus, saved as 'corpus.txt' with /big.
+ //
+@@ -29,6 +29,8 @@ struct Options
+ 	size_t autoMin{ 0 };   // /auto=N: a line must repeat in N files to be boilerplate (0 = automatic)
+ 	bool combo{ false };
+ 	size_t comboMax{ 3 };   // /combo[=N]: runs of one symbol are cut down to N symbols
++	bool noCaps{ false };   // /nocaps[=P]: lines with P% or more capitals among their letters are dropped
++	unsigned capsPercent{ 70 };
+ 	vector<string> strip;   // /strip[=PREFIX]: lines (or [...] blocks) starting with these are dropped
+ 	bool numScan{ false }, numCut{ false };   // /longnum[=N] reports, /cutnum[=N] also removes
+ 	size_t numMin{ 8 };     // ... runs of at least N digits
+@@ -51,6 +53,9 @@ void print_default()
+ 		<< "\t/strip[=PREFIX]\t- drop lines that start with PREFIX (repeatable; leading blanks ignored, case\n"
+ 		<< "\t\t\t  sensitive). A PREFIX starting with '[' drops the whole bracketed block, even\n"
+ 		<< "\t\t\t  over several lines. Without =PREFIX: '[Footnote' and '[Illustration'\n"
++		<< "\t/nocaps[=P]\t- drop lines (4+ letters) where P% or more of the letters are capitals (default\n"
++		<< "\t\t\t  70, 50..100): chapter headings, title pages, 'THE END'. The end report shows\n"
++		<< "\t\t\t  the dropped lines closest to the threshold - check them\n"
+ 		<< "\t/longnum[=N]\t- report files with runs of N+ digits (default 8, at least 4), like\n"
+ 		<< "\t\t\t  '0503874373049'; nothing is changed\n"
+ 		<< "\t/cutnum[=N]\t- same, but the runs are removed from the corpus\n"
+@@ -173,6 +178,18 @@ string join_quoted(vector<string> const& items)
+ 	return res;
+ }
+ 
++// End report of /nocaps: totals and the dropped lines with the lowest share of capitals.
++void print_caps_report(CapsStats const& stats, unsigned percent)
++{
++	cout << "\n=== Caps report (lines with " << percent << "%+ capitals dropped) ===\n";
++	cout << "\tdropped " << stats.lines << " lines, " << stats.chars << " chars\n";
++	if (stats.borderline.empty())
++		return;
++	cout << "\tclosest to the threshold:\n";
++	for (auto const& l : stats.borderline)
++		cout << "\t\t" << l.percent << "%\t" << l.text << '\n';
++}
++
+ // End report of /strip: every requested prefix (also the ones that found nothing - a typo shows up).
+ void print_strip_report(vector<string> const& prefixes, StripStats const& stats)
+ {
+@@ -344,6 +361,21 @@ int main(int argc, char const* argv[])
+ 				if (find(opt.strip.begin(), opt.strip.end(), prefix) == opt.strip.end())
+ 					opt.strip.push_back(prefix);
+ 			}
++			else if (flag == "nocaps" || flag.rfind("nocaps=", 0) == 0)
++			{
++				auto const eq{ flag.find('=') };
++				if (eq != string::npos)
++				{
++					size_t v{ 0 };
++					if (!parse_count(flag.substr(eq + 1), v) || v < 50 || v > 100)
++					{
++						cerr << "Error: /nocaps needs a percentage from 50 to 100: " << arg << endl;
++						return EXIT_FAILURE;
++					}
++					opt.capsPercent = static_cast<unsigned>(v);
++				}
++				opt.noCaps = true;
++			}
+ 			else if (flag == "longnum" || flag == "cutnum" || flag.rfind("longnum=", 0) == 0 || flag.rfind("cutnum=", 0) == 0)
+ 			{
+ 				auto const eq{ flag.find('=') };
+@@ -419,6 +451,7 @@ int main(int argc, char const* argv[])
+ 		<< "Auto head/tail: " << (opt.autoCut ? "yes" : "no") << "\n"
+ 		<< "Combo runs  : " << (opt.combo ? "max " + to_string(opt.comboMax) + " in a row" : "off") << "\n"
+ 		<< "Strip lines  : " << (opt.strip.empty() ? "off" : join_quoted(opt.strip)) << "\n"
++		<< "No caps      : " << (opt.noCaps ? to_string(opt.capsPercent) + "%+ capitals, 4+ letters" : string{ "off" }) << "\n"
+ 		<< "Long numbers: " << (!opt.numScan ? "off" : string{ opt.numCut ? "cut" : "report only" } + ", " + to_string(opt.numMin) + "+ digits") << "\n"
+ 		<< "Max digits  : " << (opt.maxDigits > 0 ? pct_str(opt.maxDigits) : "off") << "\n"
+ 		<< "Save corpus : " << (opt.big ? "yes" : "no") << "\n"
+@@ -483,6 +516,8 @@ int main(int argc, char const* argv[])
+ 	vector<pair<fs::path, double>> digitList;
+ 	ComboStats comboTotal;
+ 	StripStats stripTotal;
++	CapsStats capsTotal;
++	size_t capsFiles{ 0 };
+ 	size_t stripFiles{ 0 }, stripChars{ 0 };
+ 	vector<NumRow> numRows;
+ 	size_t comboFiles{ 0 }, comboChars{ 0 };
+@@ -527,6 +562,8 @@ int main(int argc, char const* argv[])
+ 		StripStats stripFile;
+ 		size_t stripRemoved{ 0 };
+ 		DigitRuns numInfo;
++		CapsStats capsFile;
++		size_t capsRemoved{ 0 };
+ 		if (isDna)
+ 		{
+ 			text = extract_genome(text);
+@@ -553,6 +590,8 @@ int main(int argc, char const* argv[])
+ 			}
+ 			if (!opt.strip.empty())
+ 				stripRemoved = strip_prefixed(text, opt.strip, &stripFile);
++			if (opt.noCaps)
++				capsRemoved = strip_caps_lines(text, opt.capsPercent, &capsFile);
+ 			if (opt.norm)
+ 				text = normalize_whitespace(text);
+ 			if (opt.combo)
+@@ -568,6 +607,9 @@ int main(int argc, char const* argv[])
+ 		if (!opt.strip.empty() && !isDna)
+ 			cout << "\tstrip -" << stripRemoved;
+ 
++		if (opt.noCaps && !isDna)
++			cout << "\tcaps -" << capsRemoved << " (" << capsFile.lines << " lines)";
++
+ 		if (opt.combo && !isDna)
+ 			cout << "\tcombo -" << comboRemoved;
+ 
+@@ -602,6 +644,12 @@ int main(int argc, char const* argv[])
+ 		}
+ 
+ 		// The file is part of the corpus now: its strip and combo statistics count.
++		if (capsRemoved > 0)
++		{
++			++capsFiles;
++			capsTotal.merge(capsFile);
++		}
++
+ 		if (stripRemoved > 0)
+ 		{
+ 			++stripFiles;
+@@ -661,6 +709,8 @@ int main(int argc, char const* argv[])
+ 	if (opt.autoCut)
+ 		cout << "Auto cut head    : " << autoHeadFiles << " files, " << autoHeadChars << " chars\n"
+ 		<< "Auto cut tail    : " << autoTailFiles << " files, " << autoTailChars << " chars\n";
++	if (opt.noCaps)
++		cout << "Caps cut         : " << capsTotal.chars << " chars, " << capsTotal.lines << " lines in " << capsFiles << " files\n";
+ 	if (!opt.strip.empty())
+ 		cout << "Strip cut        : " << stripChars << " chars in " << stripFiles << " files\n";
+ 	if (opt.combo)
+@@ -671,6 +721,9 @@ int main(int argc, char const* argv[])
+ 	if (!opt.strip.empty())
+ 		print_strip_report(opt.strip, stripTotal);
+ 
++	if (opt.noCaps)
++		print_caps_report(capsTotal, opt.capsPercent);
++
+ 	if (opt.combo)
+ 	{
+ 		print_combo_report(comboTotal, opt.comboMax);
+diff --git a/llm-tools/text_ops.h b/llm-tools/text_ops.h
+index 15fe56c..616d7b2 100644
+--- a/llm-tools/text_ops.h
++++ b/llm-tools/text_ops.h
+@@ -295,6 +295,91 @@ inline size_t strip_prefixed(std::string& text, std::vector<std::string> const&
+ 	return removed;
+ }
+ 
++// Statistics of strip_caps_lines().
++struct CapsStats
++{
++	struct Line
++	{
++		std::string text;       // shortened, for the report
++		unsigned percent{ 0 };  // share of capitals among its letters
++	};
++
++	size_t lines{ 0 };    // dropped lines
++	size_t chars{ 0 };    // bytes removed
++	std::vector<Line> borderline;   // the dropped lines with the LOWEST share of capitals: they show
++	                                // whether the threshold is too low
++	static constexpr size_t kKeep{ 8 };
++
++	void add_sample(std::string text, unsigned percent)
++	{
++		borderline.push_back({ std::move(text), percent });
++		std::stable_sort(borderline.begin(), borderline.end(), [](Line const& a, Line const& b) { return a.percent < b.percent; });
++		if (borderline.size() > kKeep)
++			borderline.resize(kKeep);
++	}
++
++	void merge(CapsStats const& o)
++	{
++		lines += o.lines;
++		chars += o.chars;
++		for (auto const& l : o.borderline)
++			add_sample(l.text, l.percent);
++	}
++};
++
++// In place: drops every line with at least minLetters (4) ASCII letters of which at least
++// minPercent are capitals - chapter headings, title pages, "THE END". Letters outside ASCII are
++// not counted. Needs the original line structure, so it runs before /norm.
++// Returns the number of bytes removed.
++inline size_t strip_caps_lines(std::string& text, unsigned minPercent, CapsStats* stats = nullptr)
++{
++	constexpr size_t kMinLetters{ 4 }, kSampleLen{ 70 };
++	size_t const n{ text.size() };
++	size_t w{ 0 }, pos{ 0 };
++
++	while (pos < n)
++	{
++		size_t const eol{ text.find('\n', pos) };
++		size_t const lineEnd{ eol == std::string::npos ? n : eol + 1 };
++
++		size_t upper{ 0 }, letters{ 0 };
++		for (size_t i = pos; i < lineEnd; ++i)
++		{
++			char const c{ text[i] };
++			if (c >= 'A' && c <= 'Z')
++				++upper, ++letters;
++			else if (c >= 'a' && c <= 'z')
++				++letters;
++		}
++
++		if (letters >= kMinLetters && upper * 100 >= static_cast<size_t>(minPercent) * letters)
++		{
++			if (stats)
++			{
++				++stats->lines;
++				stats->chars += lineEnd - pos;
++				std::string sample{ text, pos, lineEnd - pos };
++				while (!sample.empty() && (sample.back() == '\n' || sample.back() == '\r'))
++					sample.pop_back();
++				if (sample.size() > kSampleLen)
++					sample = sample.substr(0, kSampleLen) + "...";
++				stats->add_sample(std::move(sample), static_cast<unsigned>(upper * 100 / letters));
++			}
++		}
++		else
++		{
++			if (w != pos)
++				std::memmove(&text[w], &text[pos], lineEnd - pos);
++			w += lineEnd - pos;
++		}
++		pos = lineEnd;
++	}
++
++	size_t const removed{ n - w };
++	text.resize(w);
++	return removed;
++}
++
+ // Long runs of ASCII digits found by long_digit_runs().
+ struct DigitRuns
+ {

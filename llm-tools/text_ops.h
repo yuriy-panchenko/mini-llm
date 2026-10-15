@@ -295,6 +295,133 @@ inline size_t strip_prefixed(std::string& text, std::vector<std::string> const& 
 	return removed;
 }
 
+// Statistics of remove_underscores().
+struct UnderscoreStats
+{
+	size_t removed{ 0 };   // underscores taken out
+	size_t spaced{ 0 };    // ... of which sat between two word characters and became a blank
+};
+
+// In place: removes the '_' that Gutenberg texts use as italic markers ("_word_", "_Il Trovatore_")
+// and as rules ("________"). An underscore between two letters/digits ("snake_case") is replaced
+// by a blank instead, so two words never fuse.
+inline UnderscoreStats remove_underscores(std::string& text)
+{
+	auto const wordLike = [](char c)
+	{
+		auto const u{ static_cast<unsigned char>(c) };
+		return u >= 0x80 || std::isalnum(u) != 0;   // UTF-8 bytes count as letters here
+	};
+
+	UnderscoreStats st;
+	size_t const n{ text.size() };
+	size_t w{ 0 };
+
+	for (size_t r = 0; r < n; ++r)
+	{
+		char const c{ text[r] };
+		if (c != '_')
+		{
+			text[w++] = c;
+			continue;
+		}
+		++st.removed;
+		if (w > 0 && wordLike(text[w - 1]) && r + 1 < n && wordLike(text[r + 1]))
+		{
+			text[w++] = ' ';
+			++st.spaced;
+		}
+	}
+
+	text.resize(w);
+	return st;
+}
+
+// Statistics of strip_caps_lines().
+struct CapsStats
+{
+	struct Line
+	{
+		std::string text;       // shortened, for the report
+		unsigned percent{ 0 };  // share of capitals among its letters
+	};
+
+	size_t lines{ 0 };    // dropped lines
+	size_t chars{ 0 };    // bytes removed
+	std::vector<Line> borderline;   // the dropped lines with the LOWEST share of capitals: they show
+	                                // whether the threshold is too low
+	static constexpr size_t kKeep{ 8 };
+
+	void add_sample(std::string text, unsigned percent)
+	{
+		borderline.push_back({ std::move(text), percent });
+		std::stable_sort(borderline.begin(), borderline.end(), [](Line const& a, Line const& b) { return a.percent < b.percent; });
+		if (borderline.size() > kKeep)
+			borderline.resize(kKeep);
+	}
+
+	void merge(CapsStats const& o)
+	{
+		lines += o.lines;
+		chars += o.chars;
+		for (auto const& l : o.borderline)
+			add_sample(l.text, l.percent);
+	}
+};
+
+// In place: drops every line with at least minLetters (4) ASCII letters of which at least
+// minPercent are capitals - chapter headings, title pages, "THE END". Letters outside ASCII are
+// not counted. Needs the original line structure, so it runs before /norm.
+// Returns the number of bytes removed.
+inline size_t strip_caps_lines(std::string& text, unsigned minPercent, CapsStats* stats = nullptr)
+{
+	constexpr size_t kMinLetters{ 4 }, kSampleLen{ 70 };
+	size_t const n{ text.size() };
+	size_t w{ 0 }, pos{ 0 };
+
+	while (pos < n)
+	{
+		size_t const eol{ text.find('\n', pos) };
+		size_t const lineEnd{ eol == std::string::npos ? n : eol + 1 };
+
+		size_t upper{ 0 }, letters{ 0 };
+		for (size_t i = pos; i < lineEnd; ++i)
+		{
+			char const c{ text[i] };
+			if (c >= 'A' && c <= 'Z')
+				++upper, ++letters;
+			else if (c >= 'a' && c <= 'z')
+				++letters;
+		}
+
+		if (letters >= kMinLetters && upper * 100 >= static_cast<size_t>(minPercent) * letters)
+		{
+			if (stats)
+			{
+				++stats->lines;
+				stats->chars += lineEnd - pos;
+				std::string sample{ text, pos, lineEnd - pos };
+				while (!sample.empty() && (sample.back() == '\n' || sample.back() == '\r'))
+					sample.pop_back();
+				if (sample.size() > kSampleLen)
+					sample = sample.substr(0, kSampleLen) + "...";
+				stats->add_sample(std::move(sample), static_cast<unsigned>(upper * 100 / letters));
+			}
+		}
+		else
+		{
+			if (w != pos)
+				std::memmove(&text[w], &text[pos], lineEnd - pos);
+			w += lineEnd - pos;
+		}
+		pos = lineEnd;
+	}
+
+	size_t const removed{ n - w };
+	text.resize(w);
+	return removed;
+}
+
 // Long runs of ASCII digits found by long_digit_runs().
 struct DigitRuns
 {

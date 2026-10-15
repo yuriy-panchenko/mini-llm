@@ -2,7 +2,7 @@
 //
 // Per source file: genome files are ignored (or extracted with /dna), repeated head/tail
 // blocks are cut (/auto), Gutenberg head/tail is stripped (/gutten), lines starting with given
-// prefixes are dropped (/strip), whitespace is normalized (/norm), long runs of one symbol are
+// prefixes are dropped (/strip), mostly-capital lines are dropped (/nocaps), '_' markers are removed (/nounderscore), whitespace is normalized (/norm), long runs of one symbol are
 // shortened (/combo), long digit runs are reported or cut (/longnum, /cutnum), and the result is
 // appended to the combined corpus, saved as 'corpus.txt' with /big.
 //
@@ -29,6 +29,9 @@ struct Options
 	size_t autoMin{ 0 };   // /auto=N: a line must repeat in N files to be boilerplate (0 = automatic)
 	bool combo{ false };
 	size_t comboMax{ 3 };   // /combo[=N]: runs of one symbol are cut down to N symbols
+	bool noUnderscore{ false };   // /nounderscore: '_' (Gutenberg italics markers) removed
+	bool noCaps{ false };   // /nocaps[=P]: lines with P% or more capitals among their letters are dropped
+	unsigned capsPercent{ 70 };
 	vector<string> strip;   // /strip[=PREFIX]: lines (or [...] blocks) starting with these are dropped
 	bool numScan{ false }, numCut{ false };   // /longnum[=N] reports, /cutnum[=N] also removes
 	size_t numMin{ 8 };     // ... runs of at least N digits
@@ -51,6 +54,11 @@ void print_default()
 		<< "\t/strip[=PREFIX]\t- drop lines that start with PREFIX (repeatable; leading blanks ignored, case\n"
 		<< "\t\t\t  sensitive). A PREFIX starting with '[' drops the whole bracketed block, even\n"
 		<< "\t\t\t  over several lines. Without =PREFIX: '[Footnote' and '[Illustration'\n"
+		<< "\t/nounderscore\t- remove '_' (Gutenberg italics: _word_, rules: ________); between two\n"
+		<< "\t\t\t  letters ('snake_case') it becomes a blank\n"
+		<< "\t/nocaps[=P]\t- drop lines (4+ letters) where P% or more of the letters are capitals (default\n"
+		<< "\t\t\t  70, 50..100): chapter headings, title pages, 'THE END'. The end report shows\n"
+		<< "\t\t\t  the dropped lines closest to the threshold - check them\n"
 		<< "\t/longnum[=N]\t- report files with runs of N+ digits (default 8, at least 4), like\n"
 		<< "\t\t\t  '0503874373049'; nothing is changed\n"
 		<< "\t/cutnum[=N]\t- same, but the runs are removed from the corpus\n"
@@ -171,6 +179,18 @@ string join_quoted(vector<string> const& items)
 	for (auto const& item : items)
 		res += (res.empty() ? "'" : ", '") + item + "'";
 	return res;
+}
+
+// End report of /nocaps: totals and the dropped lines with the lowest share of capitals.
+void print_caps_report(CapsStats const& stats, unsigned percent)
+{
+	cout << "\n=== Caps report (lines with " << percent << "%+ capitals dropped) ===\n";
+	cout << "\tdropped " << stats.lines << " lines, " << stats.chars << " chars\n";
+	if (stats.borderline.empty())
+		return;
+	cout << "\tclosest to the threshold:\n";
+	for (auto const& l : stats.borderline)
+		cout << "\t\t" << l.percent << "%\t" << l.text << '\n';
 }
 
 // End report of /strip: every requested prefix (also the ones that found nothing - a typo shows up).
@@ -344,6 +364,23 @@ int main(int argc, char const* argv[])
 				if (find(opt.strip.begin(), opt.strip.end(), prefix) == opt.strip.end())
 					opt.strip.push_back(prefix);
 			}
+			else if (flag == "nounderscore")
+				opt.noUnderscore = true;
+			else if (flag == "nocaps" || flag.rfind("nocaps=", 0) == 0)
+			{
+				auto const eq{ flag.find('=') };
+				if (eq != string::npos)
+				{
+					size_t v{ 0 };
+					if (!parse_count(flag.substr(eq + 1), v) || v < 50 || v > 100)
+					{
+						cerr << "Error: /nocaps needs a percentage from 50 to 100: " << arg << endl;
+						return EXIT_FAILURE;
+					}
+					opt.capsPercent = static_cast<unsigned>(v);
+				}
+				opt.noCaps = true;
+			}
 			else if (flag == "longnum" || flag == "cutnum" || flag.rfind("longnum=", 0) == 0 || flag.rfind("cutnum=", 0) == 0)
 			{
 				auto const eq{ flag.find('=') };
@@ -419,6 +456,8 @@ int main(int argc, char const* argv[])
 		<< "Auto head/tail: " << (opt.autoCut ? "yes" : "no") << "\n"
 		<< "Combo runs  : " << (opt.combo ? "max " + to_string(opt.comboMax) + " in a row" : "off") << "\n"
 		<< "Strip lines  : " << (opt.strip.empty() ? "off" : join_quoted(opt.strip)) << "\n"
+		<< "No underscore: " << (opt.noUnderscore ? "on" : "off") << "\n"
+		<< "No caps      : " << (opt.noCaps ? to_string(opt.capsPercent) + "%+ capitals, 4+ letters" : string{ "off" }) << "\n"
 		<< "Long numbers: " << (!opt.numScan ? "off" : string{ opt.numCut ? "cut" : "report only" } + ", " + to_string(opt.numMin) + "+ digits") << "\n"
 		<< "Max digits  : " << (opt.maxDigits > 0 ? pct_str(opt.maxDigits) : "off") << "\n"
 		<< "Save corpus : " << (opt.big ? "yes" : "no") << "\n"
@@ -483,6 +522,10 @@ int main(int argc, char const* argv[])
 	vector<pair<fs::path, double>> digitList;
 	ComboStats comboTotal;
 	StripStats stripTotal;
+	CapsStats capsTotal;
+	size_t capsFiles{ 0 };
+	UnderscoreStats usTotal;
+	size_t usFiles{ 0 };
 	size_t stripFiles{ 0 }, stripChars{ 0 };
 	vector<NumRow> numRows;
 	size_t comboFiles{ 0 }, comboChars{ 0 };
@@ -527,6 +570,9 @@ int main(int argc, char const* argv[])
 		StripStats stripFile;
 		size_t stripRemoved{ 0 };
 		DigitRuns numInfo;
+		CapsStats capsFile;
+		size_t capsRemoved{ 0 };
+		UnderscoreStats usFile;
 		if (isDna)
 		{
 			text = extract_genome(text);
@@ -553,6 +599,10 @@ int main(int argc, char const* argv[])
 			}
 			if (!opt.strip.empty())
 				stripRemoved = strip_prefixed(text, opt.strip, &stripFile);
+			if (opt.noUnderscore)
+				usFile = remove_underscores(text);
+			if (opt.noCaps)
+				capsRemoved = strip_caps_lines(text, opt.capsPercent, &capsFile);
 			if (opt.norm)
 				text = normalize_whitespace(text);
 			if (opt.combo)
@@ -567,6 +617,12 @@ int main(int argc, char const* argv[])
 
 		if (!opt.strip.empty() && !isDna)
 			cout << "\tstrip -" << stripRemoved;
+
+		if (opt.noUnderscore && !isDna)
+			cout << "\tunderscores -" << usFile.removed;
+
+		if (opt.noCaps && !isDna)
+			cout << "\tcaps -" << capsRemoved << " (" << capsFile.lines << " lines)";
 
 		if (opt.combo && !isDna)
 			cout << "\tcombo -" << comboRemoved;
@@ -602,6 +658,19 @@ int main(int argc, char const* argv[])
 		}
 
 		// The file is part of the corpus now: its strip and combo statistics count.
+		if (usFile.removed > 0)
+		{
+			++usFiles;
+			usTotal.removed += usFile.removed;
+			usTotal.spaced += usFile.spaced;
+		}
+
+		if (capsRemoved > 0)
+		{
+			++capsFiles;
+			capsTotal.merge(capsFile);
+		}
+
 		if (stripRemoved > 0)
 		{
 			++stripFiles;
@@ -661,6 +730,10 @@ int main(int argc, char const* argv[])
 	if (opt.autoCut)
 		cout << "Auto cut head    : " << autoHeadFiles << " files, " << autoHeadChars << " chars\n"
 		<< "Auto cut tail    : " << autoTailFiles << " files, " << autoTailChars << " chars\n";
+	if (opt.noUnderscore)
+		cout << "Underscores cut  : " << usTotal.removed << " in " << usFiles << " files (" << usTotal.spaced << " turned into a blank between words)\n";
+	if (opt.noCaps)
+		cout << "Caps cut         : " << capsTotal.chars << " chars, " << capsTotal.lines << " lines in " << capsFiles << " files\n";
 	if (!opt.strip.empty())
 		cout << "Strip cut        : " << stripChars << " chars in " << stripFiles << " files\n";
 	if (opt.combo)
@@ -670,6 +743,9 @@ int main(int argc, char const* argv[])
 
 	if (!opt.strip.empty())
 		print_strip_report(opt.strip, stripTotal);
+
+	if (opt.noCaps)
+		print_caps_report(capsTotal, opt.capsPercent);
 
 	if (opt.combo)
 	{

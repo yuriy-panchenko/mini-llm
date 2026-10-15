@@ -1,0 +1,159 @@
+diff --git a/llm-tools/llm-tools.cpp b/llm-tools/llm-tools.cpp
+index 9f4a0e4..e33651b 100644
+--- a/llm-tools/llm-tools.cpp
++++ b/llm-tools/llm-tools.cpp
+@@ -2,7 +2,7 @@
+ //
+ // Per source file: genome files are ignored (or extracted with /dna), repeated head/tail
+ // blocks are cut (/auto), Gutenberg head/tail is stripped (/gutten), lines starting with given
+-// prefixes are dropped (/strip), mostly-capital lines are dropped (/nocaps), whitespace is normalized (/norm), long runs of one symbol are
++// prefixes are dropped (/strip), mostly-capital lines are dropped (/nocaps), '_' markers are removed (/nounderscore), whitespace is normalized (/norm), long runs of one symbol are
+ // shortened (/combo), long digit runs are reported or cut (/longnum, /cutnum), and the result is
+ // appended to the combined corpus, saved as 'corpus.txt' with /big.
+ //
+@@ -29,6 +29,7 @@ struct Options
+ 	size_t autoMin{ 0 };   // /auto=N: a line must repeat in N files to be boilerplate (0 = automatic)
+ 	bool combo{ false };
+ 	size_t comboMax{ 3 };   // /combo[=N]: runs of one symbol are cut down to N symbols
++	bool noUnderscore{ false };   // /nounderscore: '_' (Gutenberg italics markers) removed
+ 	bool noCaps{ false };   // /nocaps[=P]: lines with P% or more capitals among their letters are dropped
+ 	unsigned capsPercent{ 70 };
+ 	vector<string> strip;   // /strip[=PREFIX]: lines (or [...] blocks) starting with these are dropped
+@@ -53,6 +54,8 @@ void print_default()
+ 		<< "\t/strip[=PREFIX]\t- drop lines that start with PREFIX (repeatable; leading blanks ignored, case\n"
+ 		<< "\t\t\t  sensitive). A PREFIX starting with '[' drops the whole bracketed block, even\n"
+ 		<< "\t\t\t  over several lines. Without =PREFIX: '[Footnote' and '[Illustration'\n"
++		<< "\t/nounderscore\t- remove '_' (Gutenberg italics: _word_, rules: ________); between two\n"
++		<< "\t\t\t  letters ('snake_case') it becomes a blank\n"
+ 		<< "\t/nocaps[=P]\t- drop lines (4+ letters) where P% or more of the letters are capitals (default\n"
+ 		<< "\t\t\t  70, 50..100): chapter headings, title pages, 'THE END'. The end report shows\n"
+ 		<< "\t\t\t  the dropped lines closest to the threshold - check them\n"
+@@ -361,6 +364,8 @@ int main(int argc, char const* argv[])
+ 				if (find(opt.strip.begin(), opt.strip.end(), prefix) == opt.strip.end())
+ 					opt.strip.push_back(prefix);
+ 			}
++			else if (flag == "nounderscore")
++				opt.noUnderscore = true;
+ 			else if (flag == "nocaps" || flag.rfind("nocaps=", 0) == 0)
+ 			{
+ 				auto const eq{ flag.find('=') };
+@@ -451,6 +456,7 @@ int main(int argc, char const* argv[])
+ 		<< "Auto head/tail: " << (opt.autoCut ? "yes" : "no") << "\n"
+ 		<< "Combo runs  : " << (opt.combo ? "max " + to_string(opt.comboMax) + " in a row" : "off") << "\n"
+ 		<< "Strip lines  : " << (opt.strip.empty() ? "off" : join_quoted(opt.strip)) << "\n"
++		<< "No underscore: " << (opt.noUnderscore ? "on" : "off") << "\n"
+ 		<< "No caps      : " << (opt.noCaps ? to_string(opt.capsPercent) + "%+ capitals, 4+ letters" : string{ "off" }) << "\n"
+ 		<< "Long numbers: " << (!opt.numScan ? "off" : string{ opt.numCut ? "cut" : "report only" } + ", " + to_string(opt.numMin) + "+ digits") << "\n"
+ 		<< "Max digits  : " << (opt.maxDigits > 0 ? pct_str(opt.maxDigits) : "off") << "\n"
+@@ -518,6 +524,8 @@ int main(int argc, char const* argv[])
+ 	StripStats stripTotal;
+ 	CapsStats capsTotal;
+ 	size_t capsFiles{ 0 };
++	UnderscoreStats usTotal;
++	size_t usFiles{ 0 };
+ 	size_t stripFiles{ 0 }, stripChars{ 0 };
+ 	vector<NumRow> numRows;
+ 	size_t comboFiles{ 0 }, comboChars{ 0 };
+@@ -564,6 +572,7 @@ int main(int argc, char const* argv[])
+ 		DigitRuns numInfo;
+ 		CapsStats capsFile;
+ 		size_t capsRemoved{ 0 };
++		UnderscoreStats usFile;
+ 		if (isDna)
+ 		{
+ 			text = extract_genome(text);
+@@ -590,6 +599,8 @@ int main(int argc, char const* argv[])
+ 			}
+ 			if (!opt.strip.empty())
+ 				stripRemoved = strip_prefixed(text, opt.strip, &stripFile);
++			if (opt.noUnderscore)
++				usFile = remove_underscores(text);
+ 			if (opt.noCaps)
+ 				capsRemoved = strip_caps_lines(text, opt.capsPercent, &capsFile);
+ 			if (opt.norm)
+@@ -607,6 +618,9 @@ int main(int argc, char const* argv[])
+ 		if (!opt.strip.empty() && !isDna)
+ 			cout << "\tstrip -" << stripRemoved;
+ 
++		if (opt.noUnderscore && !isDna)
++			cout << "\tunderscores -" << usFile.removed;
++
+ 		if (opt.noCaps && !isDna)
+ 			cout << "\tcaps -" << capsRemoved << " (" << capsFile.lines << " lines)";
+ 
+@@ -644,6 +658,13 @@ int main(int argc, char const* argv[])
+ 		}
+ 
+ 		// The file is part of the corpus now: its strip and combo statistics count.
++		if (usFile.removed > 0)
++		{
++			++usFiles;
++			usTotal.removed += usFile.removed;
++			usTotal.spaced += usFile.spaced;
++		}
++
+ 		if (capsRemoved > 0)
+ 		{
+ 			++capsFiles;
+@@ -709,6 +730,8 @@ int main(int argc, char const* argv[])
+ 	if (opt.autoCut)
+ 		cout << "Auto cut head    : " << autoHeadFiles << " files, " << autoHeadChars << " chars\n"
+ 		<< "Auto cut tail    : " << autoTailFiles << " files, " << autoTailChars << " chars\n";
++	if (opt.noUnderscore)
++		cout << "Underscores cut  : " << usTotal.removed << " in " << usFiles << " files (" << usTotal.spaced << " turned into a blank between words)\n";
+ 	if (opt.noCaps)
+ 		cout << "Caps cut         : " << capsTotal.chars << " chars, " << capsTotal.lines << " lines in " << capsFiles << " files\n";
+ 	if (!opt.strip.empty())
+diff --git a/llm-tools/text_ops.h b/llm-tools/text_ops.h
+index 616d7b2..3eea9b1 100644
+--- a/llm-tools/text_ops.h
++++ b/llm-tools/text_ops.h
+@@ -295,6 +295,48 @@ inline size_t strip_prefixed(std::string& text, std::vector<std::string> const&
+ 	return removed;
+ }
+ 
++// Statistics of remove_underscores().
++struct UnderscoreStats
++{
++	size_t removed{ 0 };   // underscores taken out
++	size_t spaced{ 0 };    // ... of which sat between two word characters and became a blank
++};
++
++// In place: removes the '_' that Gutenberg texts use as italic markers ("_word_", "_Il Trovatore_")
++// and as rules ("________"). An underscore between two letters/digits ("snake_case") is replaced
++// by a blank instead, so two words never fuse.
++inline UnderscoreStats remove_underscores(std::string& text)
++{
++	auto const wordLike = [](char c)
++	{
++		auto const u{ static_cast<unsigned char>(c) };
++		return u >= 0x80 || std::isalnum(u) != 0;   // UTF-8 bytes count as letters here
++	};
++
++	UnderscoreStats st;
++	size_t const n{ text.size() };
++	size_t w{ 0 };
++
++	for (size_t r = 0; r < n; ++r)
++	{
++		char const c{ text[r] };
++		if (c != '_')
++		{
++			text[w++] = c;
++			continue;
++		}
++		++st.removed;
++		if (w > 0 && wordLike(text[w - 1]) && r + 1 < n && wordLike(text[r + 1]))
++		{
++			text[w++] = ' ';
++			++st.spaced;
++		}
++	}
++
++	text.resize(w);
++	return st;
++}
++
+ // Statistics of strip_caps_lines().
+ struct CapsStats
+ {
