@@ -142,6 +142,22 @@ std::string strip_gutenberg(std::string const& text)
 	return found ? out : text;
 }
 
+std::string escape_newlines(const std::string& s)
+{
+	std::string result;
+	result.reserve(s.size() + std::count(s.begin(), s.end(), '\n')); // optional optimization
+
+	for (char c : s) {
+		if (c == '\n') {
+			result += "\\n";
+		}
+		else {
+			result += c;
+		}
+	}
+	return result;
+}
+
 int main(int argc, char const* argv[])
 {
 	// Default values
@@ -297,7 +313,7 @@ int main(int argc, char const* argv[])
 	{
 		auto const sizeb4{ corpus.length() };
 		corpus = strip_gutenberg(corpus);
-		cout << "Guttenberg headers removed. Freed " <<  sizeb4 - corpus.size() << " chars\n";
+		cout << "Guttenberg headers removed. Freed " << sizeb4 - corpus.size() << " chars\n";
 	}
 
 	if (do_big)
@@ -340,6 +356,7 @@ int main(int argc, char const* argv[])
 
 		auto const tpEnd{ steady_clock::now() };
 		cmb_text = gTok.text(best);
+		cmb_text = escape_newlines(cmb_text);
 		max_len = std::max(max_len, cmb_text.length());
 		std::cout
 			<< '\n' << tok_size

@@ -92,7 +92,5 @@ namespace llm
 	{
 		m_dWs.fill({});
 		m_dBias.fill({});
-		// m_mWs/m_vWs/m_mBias/m_vBias intentionally NOT cleared here --
-		// Adam's moment estimates are meant to persist across steps.
 	}
 }
