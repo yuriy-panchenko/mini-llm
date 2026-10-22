@@ -94,11 +94,20 @@ void CNetSettingsDlg::OnChangeTextBrowse()
 	if (UpdateData())
 	{
 		std::filesystem::path p{ (LPCTSTR)m_File_Text };
-		std::ifstream file{ p };
+		auto const fSize{ std::filesystem::file_size(p) };
+		std::ifstream file{ p, std::ios::binary };
+		//std::ifstream file{ p };
 		if (file)
 		{
 			m_Corpus.reserve(std::filesystem::file_size(p));
 			m_Corpus.append(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+			ASSERT(m_Corpus.length() == fSize);
+
+#ifdef _DEBUG
+			auto ids = m_Tok.encode(m_Corpus);
+			auto decoded = m_Tok.decode(ids);
+			ASSERT(decoded == m_Corpus);
+#endif // _DEBUG
 		}
 	}
 }

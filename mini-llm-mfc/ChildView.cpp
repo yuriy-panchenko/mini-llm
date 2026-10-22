@@ -372,6 +372,7 @@ LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
 	s = m_pTh->GetText(FALSE);
 	s.Replace(_T("\n"), _T("\\n"));
 	s.Replace(_T("\t"), _T("\\t"));
+	s.Replace(_T("\0"), _T("\\0"));
 	item.pszText = (LPTSTR)(LPCTSTR)s;
 	m_SlowList.SetItem(&item);
 
