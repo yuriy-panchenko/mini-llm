@@ -373,3 +373,6 @@ FodyWeavers.xsd
 /Vocabs/token512.bin
 /Vocabs/token8K.bin
 /mini-llm/corpus.txt
+/mini-llm-mfc/View0.bin
+/mini-llm-mfc/View1.bin
+/mini-llm-mfc/View2.bin
