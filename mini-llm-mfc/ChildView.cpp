@@ -7,6 +7,10 @@
 #include "mini-llm-mfc.h"
 #include "ChildView.h"
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <vector>
+#include "CNetSettingsDlg.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -34,9 +38,53 @@ CChildView::CChildView()
 	, m_bShowInfo{ TRUE }
 {}
 
+namespace
+{
+	// "folder\\file" -- the corpus is called corpus.txt in every run, the folder tells them apart.
+	CString ShortPath(CString const& full)
+	{
+		if (full.IsEmpty())
+			return _T("-");
+		std::filesystem::path const p{ (LPCTSTR)full };
+		return CString{ (p.parent_path().filename() / p.filename()).c_str() };
+	}
+
+	// Plain float32 stream, no header, native (little-endian) byte order: read it back with
+	// ifstream::read into a vector<float> of size filesize/4. Truncates; an empty series
+	// never replaces an existing file.
+	void SaveFloats(CString const& name, std::vector<double> const& data)
+	{
+		if (data.empty())
+			return;
+		std::vector<float> f;
+		f.reserve(data.size());
+		for (double const v : data)
+			f.push_back(static_cast<float>(v));
+		std::ofstream file{ (LPCTSTR)name, std::ios::binary | std::ios::trunc };
+		if (file)
+			file.write(reinterpret_cast<char const*>(f.data()), static_cast<std::streamsize>(f.size() * sizeof(float)));
+	}
+}
+
 void CChildView::Initialize(CNetSettingsDlg const& dlg)
 {
 	ASSERT(!m_pTh);
+
+	// Parameter count follows the construction in CWorkerThread::Init: embedding V*d, output V*d + V,
+	// per layer 4 attention Linears (d*d + d), FFN (d*4d + 4d) + (4d*d + d), two RMSNorm gammas (2d).
+	double const d{ static_cast<double>(dlg.m_Model) }, V{ static_cast<double>(dlg.m_VocabSize) };
+	double const params{ 2. * V * d + V + static_cast<double>(dlg.m_Layers) * (12. * d * d + 11. * d) };
+	CString seed{ dlg.m_Seed.Left(70) };
+	seed.Replace(_T("\r"), _T(""));
+	seed.Replace(_T("\n"), _T(" "));
+	m_Info.Format(_T("Text   %s  (%I64u chars)\nVocab  %s  (%I64u)\nModel %I64u  Layers %I64u  Heads %I64u  CTX %I64u\n")
+		_T("Lcoo (start) %g   Params %.2fM\nSeed   %s"),
+		(LPCTSTR)ShortPath(dlg.m_File_Text), static_cast<unsigned long long>(dlg.m_Corpus.size()),
+		(LPCTSTR)ShortPath(dlg.m_File_Vocab), static_cast<unsigned long long>(dlg.m_VocabSize),
+		static_cast<unsigned long long>(dlg.m_Model), static_cast<unsigned long long>(dlg.m_Layers),
+		static_cast<unsigned long long>(dlg.m_Heads), static_cast<unsigned long long>(dlg.m_CTX),
+		dlg.m_Lcoo, params / 1e6, (LPCTSTR)seed);
+
 	if (m_pTh = static_cast<CWorkerThread*>(::AfxBeginThread(RUNTIME_CLASS(CWorkerThread), 0, 0, CREATE_SUSPENDED)))
 	{
 		m_pTh->Init(this, dlg);
@@ -219,6 +267,29 @@ void CChildView::OnPaint()
 				memDC.SelectObject(pen);
 			}
 
+			// Lowest validation loss: solid cyan vertical line at its step, labelled with value and step.
+			if (!m_ValData.empty())
+			{
+				auto const best{ static_cast<size_t>(std::distance(m_ValData.cbegin(),
+					std::min_element(m_ValData.cbegin(), m_ValData.cend()))) };
+				auto const bestStep{ best * slow_mod };
+				if (bestStep >= from)
+				{
+					CPen penBest{ PS_SOLID, 1, RGB(0, 220, 255) };
+					memDC.SelectObject(penBest);
+					int const x{ toX(bestStep) };
+					memDC.MoveTo(x, 0);
+					memDC.LineTo(x, m_rChart.Height());
+					CString t;
+					t.Format(_T("best Val %.4f @ %I64u"), m_ValData[best], static_cast<unsigned long long>(bestStep));
+					memDC.SetTextColor(RGB(0, 220, 255));
+					auto const ext{ memDC.GetTextExtent(t) };
+					int const tx{ x + 3 + ext.cx > m_rChart.Width() ? x - 3 - ext.cx : x + 3 };
+					memDC.TextOut(tx, m_rChart.Height() - ext.cy - 2, t);
+					memDC.SelectObject(pen);   // deselect before penBest is destroyed
+				}
+			}
+
 			// Learning-rate changes (Ctrl+Up/Down): dotted magenta line at that step, labelled with the new rate.
 			if (!m_LrMarks.empty())
 			{
@@ -243,7 +314,15 @@ void CChildView::OnPaint()
 
 	if (m_bShowInfo)
 	{
-		//memDC.DrawText(
+		// Settings of this net, drawn last so they sit over the curves.
+		int const iFont{ memDC.SaveDC() };
+		CFont font;
+		font.CreatePointFont(85, _T("Consolas"));
+		memDC.SelectObject(font);
+		memDC.SetBkMode(TRANSPARENT);
+		memDC.SetTextColor(RGB(120, 200, 255));
+		memDC.DrawText(m_Info, CRect{ 6, 24, m_rChart.Width() - 6, m_rChart.Height() }, DT_LEFT | DT_TOP | DT_NOPREFIX);
+		memDC.RestoreDC(iFont);   // deselects the font before it is destroyed
 	}
 
 	dc.BitBlt(m_rChart.left, m_rChart.top, m_rChart.Width(), m_rChart.Height(), &memDC, 0, 0, SRCCOPY);
@@ -300,6 +379,7 @@ void CChildView::OnSize(UINT nType, int cx, int cy)
 
 void CChildView::OnDestroy()
 {
+	SaveChartData();
 	CWnd::OnDestroy();
 
 	if (m_pTh)
@@ -367,6 +447,7 @@ LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
 
 	for (double const v : m_pTh->GetVal())
 		m_ValData.push_back(v);
+	SaveChartData();   // every slow_mod steps, so the files are never far behind the chart
 
 	++item.iSubItem;
 	s = m_pTh->GetText(FALSE);
@@ -510,6 +591,17 @@ void CChildView::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 COLORREF CChildView::GetTokenColor(llm::Tokenizer::TokenId id) const
 {
 	return token_colors[id % (sizeof(token_colors) / sizeof(COLORREF))];
+}
+
+void CChildView::SaveChartData() const
+{
+	if (m_nNumber <= 0)
+		return;
+	CString name;
+	name.Format(_T("Chart%d_loss.f32"), m_nNumber);   // one float per training step
+	SaveFloats(name, m_LossData);
+	name.Format(_T("Chart%d_val.f32"), m_nNumber);    // one float per slow_mod steps: k-th value is step k*slow_mod
+	SaveFloats(name, m_ValData);
 }
 
 void CChildView::OnShowInfo()

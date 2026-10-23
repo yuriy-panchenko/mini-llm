@@ -1,0 +1,221 @@
+diff --git a/.gitignore b/.gitignore
+index 01901b3..a1a3d7b 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -376,3 +376,4 @@ FodyWeavers.xsd
+ /mini-llm-mfc/View0.bin
+ /mini-llm-mfc/View1.bin
+ /mini-llm-mfc/View2.bin
++/mini-llm-mfc/Chart*_*.f32
+diff --git a/mini-llm-mfc/ChildFrm.cpp b/mini-llm-mfc/ChildFrm.cpp
+index e41025e..5d09559 100644
+--- a/mini-llm-mfc/ChildFrm.cpp
++++ b/mini-llm-mfc/ChildFrm.cpp
+@@ -80,6 +80,14 @@ int CChildFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
+ 		return -1;
+ 	}
+ 
++	// Number the windows so they can be told apart (restored views take a number too).
++	static int s_nCreated{ 0 };
++	m_nNumber = ++s_nCreated;
++	CString title;
++	title.Format(_T("Net %d"), m_nNumber);
++	SetWindowText(title);
++	m_wndView.SetNumber(m_nNumber);
++
+ 	return 0;
+ }
+ 
+diff --git a/mini-llm-mfc/ChildFrm.h b/mini-llm-mfc/ChildFrm.h
+index c50f88f..748ef00 100644
+--- a/mini-llm-mfc/ChildFrm.h
++++ b/mini-llm-mfc/ChildFrm.h
+@@ -13,10 +13,12 @@ public:
+ 
+ 	auto& GetView()const { return m_wndView; };
+ 	auto& GetView() { return m_wndView; };
++	int GetNumber() const { return m_nNumber; }   // 1, 2, 3... in creation order; used in the title and the chart file names
+ 
+ 	// Attributes
+ protected:
+ 	CSplitterWnd m_wndSplitter;
++	int m_nNumber{ 0 };
+ public:
+ 
+ 	// Operations
+diff --git a/mini-llm-mfc/ChildView.cpp b/mini-llm-mfc/ChildView.cpp
+index 7777446..d302181 100644
+--- a/mini-llm-mfc/ChildView.cpp
++++ b/mini-llm-mfc/ChildView.cpp
+@@ -7,6 +7,10 @@
+ #include "mini-llm-mfc.h"
+ #include "ChildView.h"
+ #include <algorithm>
++#include <filesystem>
++#include <fstream>
++#include <vector>
++#include "CNetSettingsDlg.h"
+ 
+ #ifdef _DEBUG
+ #define new DEBUG_NEW
+@@ -34,9 +38,50 @@ CChildView::CChildView()
+ 	, m_bShowInfo{ TRUE }
+ {}
+ 
++namespace
++{
++	// "folder\\file" -- the corpus is called corpus.txt in every run, the folder tells them apart.
++	CString ShortPath(CString const& full)
++	{
++		if (full.IsEmpty())
++			return _T("-");
++		std::filesystem::path const p{ (LPCTSTR)full };
++		return CString{ (p.parent_path().filename() / p.filename()).c_str() };
++	}
++
++	// Plain float32 stream, no header, native (little-endian) byte order: read it back with
++	// ifstream::read into a vector<float> of size filesize/4. Truncates; an empty series
++	// never replaces an existing file.
++	void SaveFloats(CString const& name, std::vector<double> const& data)
++	{
++		if (data.empty())
++			return;
++		std::vector<float> const f(data.begin(), data.end());
++		std::ofstream file{ (LPCTSTR)name, std::ios::binary | std::ios::trunc };
++		if (file)
++			file.write(reinterpret_cast<char const*>(f.data()), static_cast<std::streamsize>(f.size() * sizeof(float)));
++	}
++}
++
+ void CChildView::Initialize(CNetSettingsDlg const& dlg)
+ {
+ 	ASSERT(!m_pTh);
++
++	// Parameter count follows the construction in CWorkerThread::Init: embedding V*d, output V*d + V,
++	// per layer 4 attention Linears (d*d + d), FFN (d*4d + 4d) + (4d*d + d), two RMSNorm gammas (2d).
++	double const d{ static_cast<double>(dlg.m_Model) }, V{ static_cast<double>(dlg.m_VocabSize) };
++	double const params{ 2. * V * d + V + static_cast<double>(dlg.m_Layers) * (12. * d * d + 11. * d) };
++	CString seed{ dlg.m_Seed.Left(70) };
++	seed.Replace(_T("\r"), _T(""));
++	seed.Replace(_T("\n"), _T(" "));
++	m_Info.Format(_T("Text   %s  (%I64u chars)\nVocab  %s  (%I64u)\nModel %I64u  Layers %I64u  Heads %I64u  CTX %I64u\n")
++		_T("Lcoo (start) %g   Params %.2fM\nSeed   %s"),
++		(LPCTSTR)ShortPath(dlg.m_File_Text), static_cast<unsigned long long>(dlg.m_Corpus.size()),
++		(LPCTSTR)ShortPath(dlg.m_File_Vocab), static_cast<unsigned long long>(dlg.m_VocabSize),
++		static_cast<unsigned long long>(dlg.m_Model), static_cast<unsigned long long>(dlg.m_Layers),
++		static_cast<unsigned long long>(dlg.m_Heads), static_cast<unsigned long long>(dlg.m_CTX),
++		dlg.m_Lcoo, params / 1e6, (LPCTSTR)seed);
++
+ 	if (m_pTh = static_cast<CWorkerThread*>(::AfxBeginThread(RUNTIME_CLASS(CWorkerThread), 0, 0, CREATE_SUSPENDED)))
+ 	{
+ 		m_pTh->Init(this, dlg);
+@@ -219,6 +264,29 @@ void CChildView::OnPaint()
+ 				memDC.SelectObject(pen);
+ 			}
+ 
++			// Lowest validation loss: solid cyan vertical line at its step, labelled with value and step.
++			if (!m_ValData.empty())
++			{
++				auto const best{ static_cast<size_t>(std::distance(m_ValData.cbegin(),
++					std::min_element(m_ValData.cbegin(), m_ValData.cend()))) };
++				auto const bestStep{ best * slow_mod };
++				if (bestStep >= from)
++				{
++					CPen penBest{ PS_SOLID, 1, RGB(0, 220, 255) };
++					memDC.SelectObject(penBest);
++					int const x{ toX(bestStep) };
++					memDC.MoveTo(x, 0);
++					memDC.LineTo(x, m_rChart.Height());
++					CString t;
++					t.Format(_T("best Val %.4f @ %I64u"), m_ValData[best], static_cast<unsigned long long>(bestStep));
++					memDC.SetTextColor(RGB(0, 220, 255));
++					auto const ext{ memDC.GetTextExtent(t) };
++					int const tx{ x + 3 + ext.cx > m_rChart.Width() ? x - 3 - ext.cx : x + 3 };
++					memDC.TextOut(tx, m_rChart.Height() - ext.cy - 2, t);
++					memDC.SelectObject(pen);   // deselect before penBest is destroyed
++				}
++			}
++
+ 			// Learning-rate changes (Ctrl+Up/Down): dotted magenta line at that step, labelled with the new rate.
+ 			if (!m_LrMarks.empty())
+ 			{
+@@ -243,7 +311,15 @@ void CChildView::OnPaint()
+ 
+ 	if (m_bShowInfo)
+ 	{
+-		//memDC.DrawText(
++		// Settings of this net, drawn last so they sit over the curves.
++		int const iFont{ memDC.SaveDC() };
++		CFont font;
++		font.CreatePointFont(85, _T("Consolas"));
++		memDC.SelectObject(font);
++		memDC.SetBkMode(TRANSPARENT);
++		memDC.SetTextColor(RGB(120, 200, 255));
++		memDC.DrawText(m_Info, CRect{ 6, 24, m_rChart.Width() - 6, m_rChart.Height() }, DT_LEFT | DT_TOP | DT_NOPREFIX);
++		memDC.RestoreDC(iFont);   // deselects the font before it is destroyed
+ 	}
+ 
+ 	dc.BitBlt(m_rChart.left, m_rChart.top, m_rChart.Width(), m_rChart.Height(), &memDC, 0, 0, SRCCOPY);
+@@ -300,6 +376,7 @@ void CChildView::OnSize(UINT nType, int cx, int cy)
+ 
+ void CChildView::OnDestroy()
+ {
++	SaveChartData();
+ 	CWnd::OnDestroy();
+ 
+ 	if (m_pTh)
+@@ -367,6 +444,7 @@ LRESULT CChildView::OnSlowText(WPARAM wParam, LPARAM)
+ 
+ 	for (double const v : m_pTh->GetVal())
+ 		m_ValData.push_back(v);
++	SaveChartData();   // every slow_mod steps, so the files are never far behind the chart
+ 
+ 	++item.iSubItem;
+ 	s = m_pTh->GetText(FALSE);
+@@ -512,6 +590,17 @@ COLORREF CChildView::GetTokenColor(llm::Tokenizer::TokenId id) const
+ 	return token_colors[id % (sizeof(token_colors) / sizeof(COLORREF))];
+ }
+ 
++void CChildView::SaveChartData() const
++{
++	if (m_nNumber <= 0)
++		return;
++	CString name;
++	name.Format(_T("Chart%d_loss.f32"), m_nNumber);   // one float per training step
++	SaveFloats(name, m_LossData);
++	name.Format(_T("Chart%d_val.f32"), m_nNumber);    // one float per slow_mod steps: k-th value is step k*slow_mod
++	SaveFloats(name, m_ValData);
++}
++
+ void CChildView::OnShowInfo()
+ {
+ 	m_bShowInfo = !m_bShowInfo;
+diff --git a/mini-llm-mfc/ChildView.h b/mini-llm-mfc/ChildView.h
+index f1baf6d..00c154e 100644
+--- a/mini-llm-mfc/ChildView.h
++++ b/mini-llm-mfc/ChildView.h
+@@ -17,6 +17,7 @@ class CChildView : public CWnd
+ public:
+ 	CChildView();
+ 	void Initialize(CNetSettingsDlg const&);
++	void SetNumber(int n) { m_nNumber = n; }
+ 	// Attributes
+ public:
+ 	virtual void Serialize(CArchive& ar);
+@@ -58,6 +59,7 @@ protected:
+ private:
+ 	COLORREF GetTokenColor(llm::Tokenizer::TokenId)const;
+ 	void ChangeLcoo(double factor);
++	void SaveChartData() const;   // raw float32 streams: Chart<N>_loss.f32, Chart<N>_val.f32 (overwritten)
+ 
+ private:
+ 	CRect m_rCanvas, m_rChart;
+@@ -65,6 +67,8 @@ private:
+ 	CWorkerThread* m_pTh;
+ 	std::vector<double> m_LossData, m_MA50, m_ValData;   // m_MA50[i] pairs with m_LossData[i]; m_ValData[i] is step i*slow_mod
+ 	double m_MA50Sum{ 0 };
++	int m_nNumber{ 0 };   // window number, set by CChildFrame
++	CString m_Info;       // settings summary drawn over the chart (Info button)
+ 	std::vector<std::pair<size_t, double>> m_LrMarks;   // (loss index, new learning rate) for every change
+ 	BOOL m_bShowAll,m_bShowMA50,m_bShowZero,m_bShowInfo;
+ };

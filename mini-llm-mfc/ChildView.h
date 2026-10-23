@@ -17,6 +17,7 @@ class CChildView : public CWnd
 public:
 	CChildView();
 	void Initialize(CNetSettingsDlg const&);
+	void SetNumber(int n) { m_nNumber = n; }
 	// Attributes
 public:
 	virtual void Serialize(CArchive& ar);
@@ -58,6 +59,7 @@ protected:
 private:
 	COLORREF GetTokenColor(llm::Tokenizer::TokenId)const;
 	void ChangeLcoo(double factor);
+	void SaveChartData() const;   // raw float32 streams: Chart<N>_loss.f32, Chart<N>_val.f32 (overwritten)
 
 private:
 	CRect m_rCanvas, m_rChart;
@@ -65,6 +67,8 @@ private:
 	CWorkerThread* m_pTh;
 	std::vector<double> m_LossData, m_MA50, m_ValData;   // m_MA50[i] pairs with m_LossData[i]; m_ValData[i] is step i*slow_mod
 	double m_MA50Sum{ 0 };
+	int m_nNumber{ 0 };   // window number, set by CChildFrame
+	CString m_Info;       // settings summary drawn over the chart (Info button)
 	std::vector<std::pair<size_t, double>> m_LrMarks;   // (loss index, new learning rate) for every change
 	BOOL m_bShowAll,m_bShowMA50,m_bShowZero,m_bShowInfo;
 };

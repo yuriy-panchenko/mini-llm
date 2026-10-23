@@ -80,6 +80,14 @@ int CChildFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 		return -1;
 	}
 
+	// Number the windows so they can be told apart (restored views take a number too).
+	static int s_nCreated{ 0 };
+	m_nNumber = ++s_nCreated;
+	CString title;
+	title.Format(_T("Net %d"), m_nNumber);
+	SetWindowText(title);
+	m_wndView.SetNumber(m_nNumber);
+
 	return 0;
 }
 

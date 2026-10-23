@@ -13,10 +13,12 @@ public:
 
 	auto& GetView()const { return m_wndView; };
 	auto& GetView() { return m_wndView; };
+	int GetNumber() const { return m_nNumber; }   // 1, 2, 3... in creation order; used in the title and the chart file names
 
 	// Attributes
 protected:
 	CSplitterWnd m_wndSplitter;
+	int m_nNumber{ 0 };
 public:
 
 	// Operations
