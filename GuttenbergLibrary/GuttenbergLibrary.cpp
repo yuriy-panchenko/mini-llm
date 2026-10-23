@@ -337,9 +337,22 @@ int main(int argc, char const* argv[])
 	gTok.reset(vocab_size);
 	gTok.tokenize(corpus);
 
-	size_t milestone{ 0x200ull }, max_len{ 1ull }, best_count, same_freq_count{}, curr_freq{};
+	size_t milestone{ 0x100ull }, max_len{ 1ull }, best_count, same_freq_count{}, curr_freq{};
 	std::string cmb_text;
 	bool just_saved{ false };
+
+	auto check_milestone = [&]()
+		{
+			if (gTok.vocab_size() == milestone)
+			{
+				fs::path save_path = dst_path / ("token" + (milestone >= 0x400 ? to_string(milestone / 0x400) + "K" : to_string(milestone)) + ".bin");
+				save_as(save_path);
+				milestone <<= 1;
+				just_saved = true;
+			}
+		};
+	
+	check_milestone();
 
 	while (gTok.vocab_size() < vocab_size)
 	{
@@ -366,13 +379,7 @@ int main(int argc, char const* argv[])
 			<< '\t' << best_count << "\t" << same_freq_count << '\t' << cmb_text.length() << "\t\"" << cmb_text << '\"'
 			;
 
-		if (gTok.vocab_size() == milestone)
-		{
-			fs::path save_path = dst_path / ("token" + (milestone >= 0x400 ? to_string(milestone / 0x400) + "K" : to_string(milestone)) + ".bin");
-			save_as(save_path);
-			milestone <<= 1;
-			just_saved = true;
-		}
+		check_milestone();
 	}
 
 	if (!just_saved)
